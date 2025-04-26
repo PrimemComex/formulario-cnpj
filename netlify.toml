@@ -1,0 +1,3 @@
+[build]
+  publish = "formulario"
+  functions = "functions"
