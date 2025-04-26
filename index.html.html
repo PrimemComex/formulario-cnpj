@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Formulário de CNPJ</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .form-container {
+            max-width: 400px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .error {
+            color: red;
+            display: none;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            display: none;
+        }
+        #create-deal-btn {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            display: none;
+        }
+        #create-deal-btn:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <h2>Inserir CNPJ</h2>
+        <form id="cnpj-form" enctype="multipart/form-data">
+            <label for="cnpj">CNPJ:</label><br>
+            <input type="text" id="cnpj" name="cnpj" placeholder="99.999.999/9999-99" required><br>
+            <p id="error-message" class="error">CNPJ inválido! Use 14 dígitos (ex.: 12.345.678/0001-99).</p>
+
+            <label for="conhecimento_embarque">Conhecimento de Embarque:</label><br>
+            <input type="text" id="conhecimento_embarque" name="conhecimento_embarque" placeholder="Digite o conhecimento de embarque" required><br><br>
+
+            <label for="anexo">Anexar Arquivo (PDF, Imagem, etc.):</label><br>
+            <input type="file" id="anexo" name="anexo" accept=".pdf,.jpg,.jpeg,.png" multiple><br><br>
+
+            <button type="submit">Buscar Dados</button>
+        </form>
+        <div id="result" class="result">
+            <h3>Dados da Empresa</h3>
+            <p><strong>Razão Social:</strong> <span id="razao_social"></span></p>
+            <p><strong>Email:</strong> <span id="email"></span></p>
+            <p><strong>Telefone:</strong> <span id="telefone"></span></p>
+            <button id="create-deal-btn" onclick="createDeal()">Criar Negócio</button>
+        </div>
+    </div>
+    <script>
+        let companyId = null; // Armazenar o ID da empresa encontrada
+        let filesToUpload = []; // Armazenar os arquivos anexados
+        let conhecimentoEmbarque = ""; // Armazenar o valor do Conhecimento de Embarque
+
+        // Função para formatar o CNPJ no padrão com pontos e traços
+        function formatCNPJ(cnpj) {
+            cnpj = cnpj.replace(/[^\d]/g, ""); // Remove tudo que não é dígito
+            if (cnpj.length === 14) {
+                return `${cnpj.substr(0, 2)}.${cnpj.substr(2, 3)}.${cnpj.substr(5, 3)}/${cnpj.substr(8, 4)}-${cnpj.substr(12, 2)}`;
+            }
+            return cnpj;
+        }
+
+        document.getElementById("cnpj-form").addEventListener("submit", function(event) {
+            event.preventDefault(); // Impede o envio padrão do formulário
+            const cnpjInput = document.getElementById("cnpj").value;
+            const cnpjClean = cnpjInput.replace(/[^\d]/g, ""); // Formato limpo (sem pontos e traços)
+            const cnpjFormatted = formatCNPJ(cnpjClean); // Formato com pontos e traços
+            const errorMessage = document.getElementById("error-message");
+            const resultDiv = document.getElementById("result");
+            const createDealBtn = document.getElementById("create-deal-btn");
+            filesToUpload = document.getElementById("anexo").files;
+            conhecimentoEmbarque = document.getElementById("conhecimento_embarque").value;
+
+            // Validação do CNPJ (verifica se tem 14 dígitos)
+            if (cnpjClean.length !== 14 || isNaN(cnpjClean)) {
+                errorMessage.style.display = "block"; // Mostra erro
+                resultDiv.style.display = "none";
+                createDealBtn.style.display = "none";
+                return;
+            }
+            errorMessage.style.display = "none"; // Esconde erro
+
+            // Verificar arquivos anexados
+            let fileNames = [];
+            if (filesToUpload.length > 0) {
+                for (let i = 0; i < filesToUpload.length; i++) {
+                    fileNames.push(filesToUpload[i].name);
+                }
+                console.log("Arquivos anexados: " + fileNames.join(", "));
+            } else {
+                console.log("Nenhum arquivo anexado.");
+            }
+
+            // Chamar o Bitrix24 para buscar a empresa
+            const webhookUrl = "https://primem.bitrix24.com.br/rest/89/n3c0pqaz6oln7vb3/";
+            const trySearch = (cnpj) => {
+                const queryUrl = `${webhookUrl}crm.company.list?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpj)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE`;
+                return fetch(queryUrl)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error("Erro ao buscar empresa. CNPJ não encontrado ou webhook inválido.");
+                        }
+                        return response.json();
+                    });
+            };
+
+            // Tentar buscar com o formato com pontos e traços
+            trySearch(cnpjFormatted)
+                .then(data => {
+                    if (data.result && data.result.length > 0) {
+                        processCompanyData(data);
+                    } else {
+                        // Se não encontrar, tentar com o formato limpo
+                        trySearch(cnpjClean)
+                            .then(data => {
+                                if (data.result && data.result.length > 0) {
+                                    processCompanyData(data);
+                                } else {
+                                    alert("Empresa não encontrada no Bitrix24 para o CNPJ: " + cnpjInput);
+                                    resultDiv.style.display = "none";
+                                    createDealBtn.style.display = "none";
+                                }
+                            })
+                            .catch(error => {
+                                alert(error.message);
+                                resultDiv.style.display = "none";
+                                createDealBtn.style.display = "none";
+                            });
+                    }
+                })
+                .catch(error => {
+                    // Se a primeira tentativa falhar, tentar com o formato limpo
+                    trySearch(cnpjClean)
+                        .then(data => {
+                            if (data.result && data.result.length > 0) {
+                                processCompanyData(data);
+                            } else {
+                                alert(error.message);
+                                resultDiv.style.display = "none";
+                                createDealBtn.style.display = "none";
+                            }
+                        })
+                        .catch(error => {
+                            alert(error.message);
+                            resultDiv.style.display = "none";
+                            createDealBtn.style.display = "none";
+                        });
+                });
+
+            function processCompanyData(data) {
+                const company = data.result[0]; // Primeira empresa encontrada
+                companyId = company.ID; // Armazenar o ID da empresa
+                // Preencher os campos com os dados retornados
+                document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
+                document.getElementById("email").textContent = company.EMAIL && company.EMAIL.length > 0 ? company.EMAIL[0].VALUE : "Não informado";
+                document.getElementById("telefone").textContent = company.PHONE && company.PHONE.length > 0 ? company.PHONE[0].VALUE : "Não informado";
+                resultDiv.style.display = "block"; // Mostrar os dados
+                createDealBtn.style.display = "block"; // Mostrar o botão "Criar Negócio"
+            }
+        });
+
+        function createDeal() {
+            if (!companyId) {
+                alert("Nenhuma empresa selecionada para criar o negócio.");
+                return;
+            }
+
+            const webhookUrl = "https://primem.bitrix24.com.br/rest/89/n3c0pqaz6oln7vb3/";
+
+            // Criar o negócio com o campo Conhecimento de Embarque
+            const createDealUrl = `${webhookUrl}crm.deal.add?fields[TITLE]=Negócio para Empresa ${companyId}&fields[COMPANY_ID]=${companyId}&fields[UF_CRM_1706725043860]=${encodeURIComponent(conhecimentoEmbarque)}`;
+            fetch(createDealUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Erro ao criar o negócio.");
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.result) {
+                        const dealId = data.result; // ID do negócio criado
+                        alert("Negócio criado com sucesso! ID: " + dealId);
+
+                        // Enviar os arquivos anexados, se houver
+                        if (filesToUpload.length > 0) {
+                            const uploadPromises = Array.from(filesToUpload).map(file => {
+                                const formData = new FormData();
+                                formData.append("file", file);
+
+                                // Enviar o arquivo para o Bitrix24
+                                return fetch(`${webhookUrl}disk.file.upload`, {
+                                    method: "POST",
+                                    body: formData
+                                })
+                                .then(response => {
+                                    if (!response.ok) {
+                                        throw new Error("Erro ao enviar o arquivo: " + file.name);
+                                    }
+                                    return response.json();
+                                })
+                                .then(fileData => {
+                                    if (fileData.result && fileData.result.ID) {
+                                        const fileId = fileData.result.ID;
+                                        // Associar o arquivo ao campo UF_CRM_1724202742 do negócio
+                                        return fetch(`${webhookUrl}crm.deal.update?id=${dealId}&fields[UF_CRM_1724202742][]=${fileId}`);
+                                    } else {
+                                        throw new Error("Erro ao obter o ID do arquivo: " + file.name);
+                                    }
+                                });
+                            });
+
+                            // Executar todas as promessas de upload
+                            Promise.all(uploadPromises)
+                                .then(() => {
+                                    alert("Arquivos enviados e associados ao negócio com sucesso!");
+                                })
+                                .catch(error => {
+                                    alert(error.message);
+                                });
+                        } else {
+                            alert("Negócio criado, mas nenhum arquivo foi anexado.");
+                        }
+                    } else {
+                        alert("Erro ao criar o negócio: " + (data.error_description || "Desconhecido"));
+                    }
+                })
+                .catch(error => {
+                    alert(error.message);
+                });
+        }
+    </script>
+</body>
+</html>
