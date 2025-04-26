@@ -216,7 +216,7 @@
             fetch(createDealUrl)
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error("Erro ao criar o negócio.");
+                        throw new Error("Erro ao criar o negócio: " + response.statusText);
                     }
                     return response.json();
                 })
@@ -228,13 +228,21 @@
                         // Enviar os arquivos anexados, se houver
                         if (filesToUpload.length > 0) {
                             const uploadPromises = Array.from(filesToUpload).map(file => {
+                                // Criar um FormData para enviar o arquivo
                                 const formData = new FormData();
                                 formData.append("fileContent", file, file.name);
+
+                                // Log para depurar o FormData
+                                console.log("Enviando arquivo: " + file.name);
+                                console.log("Tamanho do arquivo: " + file.size + " bytes");
 
                                 // Enviar o arquivo para o Bitrix24
                                 return fetch(`${webhookUrl}disk.file.upload`, {
                                     method: "POST",
-                                    body: formData
+                                    body: formData,
+                                    headers: {
+                                        "Accept": "application/json"
+                                    }
                                 })
                                 .then(response => {
                                     if (!response.ok) {
@@ -249,11 +257,16 @@
                                     console.log("Resposta do upload do arquivo:", fileData);
                                     if (fileData.result && fileData.result.ID) {
                                         const fileId = fileData.result.ID;
-                                        // Associar o arquivo ao novo campo UF_CRM_1745685384 do negócio
+                                        console.log("Arquivo enviado com sucesso, ID: " + fileId);
+                                        // Associar o arquivo ao campo UF_CRM_1745685384 do negócio
                                         return fetch(`${webhookUrl}crm.deal.update?id=${dealId}&fields[UF_CRM_1745685384][]=${fileId}`);
                                     } else {
-                                        throw new Error("Erro ao obter o ID do arquivo: " + file.name);
+                                        throw new Error("Erro ao obter o ID do arquivo: " + file.name + " - Resposta inválida do Bitrix24");
                                     }
+                                })
+                                .catch(error => {
+                                    console.error("Erro detalhado ao enviar o arquivo:", error);
+                                    throw error;
                                 });
                             });
 
@@ -274,6 +287,7 @@
                     }
                 })
                 .catch(error => {
+                    console.error("Erro ao criar o negócio:", error);
                     showStatusMessage(error.message, true);
                 });
         }
