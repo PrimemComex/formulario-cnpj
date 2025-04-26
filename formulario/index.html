@@ -230,14 +230,14 @@
                             const uploadPromises = Array.from(filesToUpload).map(file => {
                                 // Criar um FormData para enviar o arquivo
                                 const formData = new FormData();
-                                formData.append("fileContent", file, file.name);
+                                formData.append("file", file, file.name);
 
                                 // Log para depurar o FormData
                                 console.log("Enviando arquivo: " + file.name);
                                 console.log("Tamanho do arquivo: " + file.size + " bytes");
 
-                                // Enviar o arquivo para o Bitrix24
-                                return fetch(`${webhookUrl}disk.file.upload`, {
+                                // Enviar o arquivo para o Bitrix24 usando crm.document.add
+                                return fetch(`${webhookUrl}crm.document.add?entityTypeId=5&entityId=${dealId}`, {
                                     method: "POST",
                                     body: formData,
                                     headers: {
