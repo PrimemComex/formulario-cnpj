@@ -101,6 +101,16 @@
             }
         }
 
+        // Função para converter arquivo para Base64
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1]); // Remove o prefixo "data:..."
+                reader.onerror = error => reject(error);
+                reader.readAsDataURL(file);
+            });
+        }
+
         document.getElementById("cnpj-form").addEventListener("submit", function(event) {
             event.preventDefault(); // Impede o envio padrão do formulário
             const cnpjInput = document.getElementById("cnpj").value;
@@ -203,7 +213,7 @@
             }
         });
 
-        function createDeal() {
+        async function createDeal() {
             if (!companyId) {
                 showStatusMessage("Nenhuma empresa selecionada para criar o negócio.", true);
                 return;
@@ -211,85 +221,51 @@
 
             const webhookUrl = "https://primem.bitrix24.com.br/rest/89/2h0usfzkv0bo8jqo/";
 
-            // Criar o negócio com o campo Conhecimento de Embarque
-            const createDealUrl = `${webhookUrl}crm.deal.add?fields[TITLE]=Conhecimento de embarque desconhecido&fields[COMPANY_ID]=${companyId}&fields[UF_CRM_1706725043860]=${encodeURIComponent(conhecimentoEmbarque)}`;
-            fetch(createDealUrl)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error("Erro ao criar o negócio: " + response.statusText);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    if (data.result) {
-                        const dealId = data.result; // ID do negócio criado
-                        showStatusMessage("Negócio enviado (ID: " + dealId + ")");
+            try {
+                // Preparar os dados do negócio
+                let fields = {
+                    TITLE: "Conhecimento de embarque desconhecido",
+                    COMPANY_ID: companyId,
+                    UF_CRM_1706725043860: conhecimentoEmbarque
+                };
 
-                        // Enviar os arquivos anexados, se houver
-                        if (filesToUpload.length > 0) {
-                            const uploadPromises = Array.from(filesToUpload).map(file => {
-                                // Criar um FormData para enviar o arquivo
-                                const formData = new FormData();
-                                formData.append("file", file);
+                // Se houver arquivos, convertê-los para Base64 e adicioná-los ao campo UF_CRM_1745685384
+                if (filesToUpload.length > 0) {
+                    const file = filesToUpload[0]; // Suporta apenas 1 arquivo por agora
+                    const base64File = await fileToBase64(file);
+                    console.log("Arquivo convertido para Base64: " + file.name);
 
-                                // Log para depurar o FormData
-                                console.log("Enviando arquivo: " + file.name);
-                                console.log("Tamanho do arquivo: " + file.size + " bytes");
+                    // Adicionar o arquivo em Base64 ao campo UF_CRM_1745685384
+                    fields.UF_CRM_1745685384 = JSON.stringify({
+                        fileData: [file.name, base64File]
+                    });
+                }
 
-                                // Enviar o arquivo para o Bitrix24 usando disk.file.upload
-                                return fetch(`${webhookUrl}disk.file.upload`, {
-                                    method: "POST",
-                                    body: formData,
-                                    headers: {
-                                        "Accept": "application/json"
-                                    }
-                                })
-                                .then(response => {
-                                    if (!response.ok) {
-                                        console.error("Erro ao enviar o arquivo: " + file.name, response.status, response.statusText);
-                                        return response.json().then(errorData => {
-                                            throw new Error("Erro ao enviar o arquivo: " + file.name + " - " + (errorData.error_description || response.statusText));
-                                        });
-                                    }
-                                    return response.json();
-                                })
-                                .then(fileData => {
-                                    console.log("Resposta do upload do arquivo:", fileData);
-                                    if (fileData.result && fileData.result.ID) {
-                                        const fileId = fileData.result.ID;
-                                        console.log("Arquivo enviado com sucesso, ID: " + fileId);
-                                        // Associar o arquivo ao campo UF_CRM_1745685384 do negócio
-                                        return fetch(`${webhookUrl}crm.deal.update?id=${dealId}&fields[UF_CRM_1745685384]=${fileId}`);
-                                    } else {
-                                        throw new Error("Erro ao obter o ID do arquivo: " + file.name + " - Resposta inválida do Bitrix24");
-                                    }
-                                })
-                                .catch(error => {
-                                    console.error("Erro detalhado ao enviar o arquivo:", error);
-                                    throw error;
-                                });
-                            });
+                // Criar o negócio com o arquivo incluído
+                const createDealUrl = `${webhookUrl}crm.deal.add?fields=${encodeURIComponent(JSON.stringify(fields))}`;
+                const dealResponse = await fetch(createDealUrl);
+                if (!dealResponse.ok) {
+                    console.error("Erro ao criar o negócio:", dealResponse.status, dealResponse.statusText);
+                    const errorData = await dealResponse.json();
+                    throw new Error("Erro ao criar o negócio: " + (errorData.error_description || dealResponse.statusText));
+                }
+                const dealData = await dealResponse.json();
 
-                            // Executar todas as promessas de upload
-                            Promise.all(uploadPromises)
-                                .then(() => {
-                                    showStatusMessage("Arquivo anexado com sucesso!");
-                                })
-                                .catch(error => {
-                                    console.error("Erro detalhado:", error);
-                                    showStatusMessage(error.message, true);
-                                });
-                        } else {
-                            showStatusMessage("Nenhum arquivo anexado.");
-                        }
+                if (dealData.result) {
+                    const dealId = dealData.result; // ID do negócio criado
+                    showStatusMessage("Negócio enviado (ID: " + dealId + ")");
+                    if (filesToUpload.length > 0) {
+                        showStatusMessage("Arquivo anexado com sucesso!");
                     } else {
-                        showStatusMessage("Erro ao criar o negócio: " + (data.error_description || "Desconhecido"), true);
+                        showStatusMessage("Nenhum arquivo anexado.");
                     }
-                })
-                .catch(error => {
-                    console.error("Erro ao criar o negócio:", error);
-                    showStatusMessage(error.message, true);
-                });
+                } else {
+                    showStatusMessage("Erro ao criar o negócio: " + (dealData.error_description || "Desconhecido"), true);
+                }
+            } catch (error) {
+                console.error("Erro ao criar o negócio:", error);
+                showStatusMessage(error.message, true);
+            }
         }
     </script>
 </body>
