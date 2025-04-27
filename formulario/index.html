@@ -190,13 +190,13 @@
                 }
             };
 
-            // Tentar buscar com o formato com pontos e traços
+            // Tentar buscar com ambos os formatos do CNPJ
             try {
                 let data = await trySearchWithRetry(cnpjFormatted);
                 if (data.result && data.result.length > 0) {
                     processCompanyData(data);
                 } else {
-                    // Se não encontrar, tentar com o formato limpo
+                    // Tentar com o formato limpo
                     data = await trySearchWithRetry(cnpjClean);
                     if (data.result && data.result.length > 0) {
                         processCompanyData(data);
