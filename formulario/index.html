@@ -172,7 +172,9 @@
                         const errorData = await response.json();
                         throw new Error("Erro ao buscar empresa: " + (errorData.error_description || response.statusText));
                     }
-                    return await response.json();
+                    const data = await response.json();
+                    console.log("Dados retornados do Bitrix24:", JSON.stringify(data, null, 2));
+                    return data;
                 } catch (error) {
                     clearTimeout(timeoutId);
                     throw error;
@@ -251,12 +253,16 @@
 
             function processCompanyData(data, cnpjFormatted, cnpjClean) {
                 // Filtrar empresas que realmente tenham o CNPJ correspondente
-                const company = data.result.find(c => {
+                const companies = data.result.filter(c => {
                     const companyCnpj = c.UF_CRM_25C6A52B ? String(c.UF_CRM_25C6A52B).trim() : "";
                     const cleanCompanyCnpj = cleanCNPJ(companyCnpj);
-                    console.log("Comparando CNPJ da empresa:", companyCnpj, "limpo:", cleanCompanyCnpj, "com:", cnpjFormatted, "e:", cnpjClean); // Log para depuração
-                    return cleanCompanyCnpj === cnpjClean;
+                    console.log("Comparando CNPJ da empresa:", companyCnpj, "limpo:", cleanCompanyCnpj, "com:", cnpjFormatted, "e:", cnpjClean);
+                    return cleanCompanyCnpj === cnpjClean && companyCnpj !== ""; // Garante que o CNPJ não seja vazio
                 });
+                console.log("Empresas filtradas:", JSON.stringify(companies, null, 2));
+
+                // Selecionar a primeira empresa correspondente
+                const company = companies.length > 0 ? companies[0] : null;
                 if (!company) {
                     showStatusMessage("Nenhuma empresa encontrada com o CNPJ informado.", true);
                     resultDiv.style.display = "none";
@@ -264,7 +270,7 @@
                     return;
                 }
                 companyId = company.ID; // Armazenar o ID da empresa
-                console.log("Empresa selecionada:", company); // Log para depuração
+                console.log("Empresa selecionada:", JSON.stringify(company, null, 2)); // Log para depuração
                 // Preencher os campos com os dados retornados
                 document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
                 document.getElementById("email").textContent = company.EMAIL && company.EMAIL.length > 0 ? company.EMAIL[0].VALUE : "Não informado";
