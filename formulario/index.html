@@ -151,7 +151,7 @@
             }
 
             // Chamar o Bitrix24 para buscar a empresa via proxy
-            const proxyUrl = "/.netlify/functions/proxy/"; // Corrigido o caminho do proxy
+            const proxyUrl = "/.netlify/functions/proxy/";
             const trySearch = async (cnpj) => {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 10000); // Timeout de 10 segundos
@@ -214,8 +214,16 @@
             }
 
             function processCompanyData(data) {
-                const company = data.result[0]; // Primeira empresa encontrada
+                // Filtrar a empresa com o título "PRIMEM COMEX, COMÉRCIO EXTERIOR LTDA"
+                const company = data.result.find(c => c.TITLE === "PRIMEM COMEX, COMÉRCIO EXTERIOR LTDA");
+                if (!company) {
+                    showStatusMessage("Empresa 'PRIMEM COMEX, COMÉRCIO EXTERIOR LTDA' não encontrada para o CNPJ informado.", true);
+                    resultDiv.style.display = "none";
+                    createDealBtn.style.display = "none";
+                    return;
+                }
                 companyId = company.ID; // Armazenar o ID da empresa
+                console.log("Empresa selecionada:", company); // Log para depuração
                 // Preencher os campos com os dados retornados
                 document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
                 document.getElementById("email").textContent = company.EMAIL && company.EMAIL.length > 0 ? company.EMAIL[0].VALUE : "Não informado";
@@ -231,7 +239,7 @@
                 return;
             }
 
-            const proxyUrl = "/.netlify/functions/proxy/"; // Corrigido o caminho do proxy
+            const proxyUrl = "/.netlify/functions/proxy/";
 
             try {
                 // Criar o negócio sem o arquivo
@@ -241,7 +249,7 @@
                     UF_CRM_1706725043860: conhecimentoEmbarque
                 };
                 const createDealUrl = `${proxyUrl}crm.deal.add`;
-                console.log("Criando negócio com URL:", createDealUrl); // Log para depuração
+                console.log("Criando negócio com URL:", createDealUrl, "Dados:", dealFields); // Log para depuração
                 const dealResponse = await fetch(createDealUrl, {
                     method: "POST",
                     headers: {
@@ -256,6 +264,7 @@
                     throw new Error("Erro ao criar o negócio: " + (errorData.error_description || dealResponse.statusText));
                 }
                 const dealData = await dealResponse.json();
+                console.log("Resposta de criação do negócio:", dealData); // Log para depuração
 
                 if (dealData.result) {
                     const dealId = dealData.result; // ID do negócio criado
@@ -273,18 +282,15 @@
                                 fileData: [file.name, base64File]
                             }
                         };
-                        const updateDealUrl = `${proxyUrl}crm.deal.update`;
-                        console.log("Atualizando negócio com URL:", updateDealUrl); // Log para depuração
+                        const updateDealUrl = `${proxyUrl}crm.deal.update?id=${dealId}`; // Passar o id na URL
+                        console.log("Atualizando negócio com URL:", updateDealUrl, "Dados:", fileData); // Log para depuração
                         const updateResponse = await fetch(updateDealUrl, {
                             method: "POST",
                             headers: {
                                 "Content-Type": "application/json",
                                 "Accept": "application/json"
                             },
-                            body: JSON.stringify({
-                                id: dealId,
-                                fields: fileData
-                            })
+                            body: JSON.stringify({ fields: fileData })
                         });
                         if (!updateResponse.ok) {
                             console.error("Erro ao enviar o arquivo: " + file.name, updateResponse.status, updateResponse.statusText);
