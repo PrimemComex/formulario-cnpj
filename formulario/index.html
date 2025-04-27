@@ -157,10 +157,12 @@
 
             // Chamar o Bitrix24 para buscar a empresa via proxy
             const proxyUrl = "/.netlify/functions/proxy/";
-            const trySearch = async (cnpj) => {
+
+            // Função para buscar uma página específica
+            const fetchPage = async (cnpj, start = 0) => {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 10000); // Timeout de 10 segundos
-                const queryUrl = `${proxyUrl}crm.company.list?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpj)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B`;
+                const queryUrl = `${proxyUrl}crm.company.list?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpj)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B&start=${start}`;
                 console.log("Tentando buscar empresa com URL:", queryUrl); // Log para depuração
                 try {
                     const response = await fetch(queryUrl, { signal: controller.signal });
@@ -177,14 +179,41 @@
                 }
             };
 
-            // Função para tentar a busca com retentativas
+            // Função para buscar todas as páginas
+            const fetchAllPages = async (cnpj) => {
+                let start = 0;
+                let allResults = [];
+                let hasMore = true;
+
+                while (hasMore) {
+                    try {
+                        console.log(`Buscando página a partir de start=${start} para o CNPJ: ${cnpj}`);
+                        const data = await fetchPage(cnpj, start);
+                        console.log("Dados recebidos:", JSON.stringify(data, null, 2)); // Log detalhado para depuração
+                        if (data.result && data.result.length > 0) {
+                            allResults = allResults.concat(data.result);
+                        }
+                        // Verifica se há mais páginas
+                        if (data.next) {
+                            start = data.next; // Atualiza o start para a próxima página
+                        } else {
+                            hasMore = false; // Não há mais páginas
+                        }
+                    } catch (error) {
+                        console.error("Erro ao buscar página:", error.message);
+                        throw error;
+                    }
+                }
+                return allResults;
+            };
+
+            // Função para tentar a busca com retentativas e todas as páginas
             const trySearchWithRetry = async (cnpj, maxRetries = 3, delayMs = 2000) => {
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
                         console.log(`Tentativa ${attempt} de busca para o CNPJ: ${cnpj}`);
-                        const data = await trySearch(cnpj);
-                        console.log("Dados recebidos:", JSON.stringify(data, null, 2)); // Log detalhado para depuração
-                        return data; // Sucesso, retorna os dados
+                        const results = await fetchAllPages(cnpj);
+                        return { result: results }; // Retorna no mesmo formato que a API
                     } catch (error) {
                         console.error(`Erro na tentativa ${attempt}:`, error.message);
                         if (attempt === maxRetries) {
