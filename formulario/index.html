@@ -143,7 +143,7 @@
 
             // Webhook para buscar empresas (crm.company.list)
             const companyListWebhook = "https://primem.bitrix24.com.br/rest/89/2h0usfzkv0bo8jqo/crm.company.list";
-            const queryUrl = `${companyListWebhook}?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpjFormatted)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE`;
+            const queryUrl = `${companyListWebhook}?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpjFormatted)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B`;
 
             try {
                 console.log("Buscando empresa com URL:", queryUrl);
@@ -152,15 +152,28 @@
                 const data = await response.json();
                 console.log("Resposta da busca:", JSON.stringify(data, null, 2));
 
-                if (data.result && data.result.length > 0) {
-                    companyId = data.result[0].ID;
-                    document.getElementById("razao_social").textContent = data.result[0].TITLE || "Não informado";
-                    document.getElementById("email").textContent = data.result[0].EMAIL?.[0]?.VALUE || "Não informado";
-                    document.getElementById("telefone").textContent = data.result[0].PHONE?.[0]?.VALUE || "Não informado";
+                // Filtrar empresas que realmente correspondem ao CNPJ
+                const matchingCompanies = data.result.filter(company => {
+                    const companyCnpj = company.UF_CRM_25C6A52B ? String(company.UF_CRM_25C6A52B).trim() : "";
+                    const cleanCompanyCnpj = cleanCNPJ(companyCnpj);
+                    console.log("Comparando CNPJ da empresa:", companyCnpj, "limpo:", cleanCompanyCnpj, "com:", cnpjClean);
+                    return cleanCompanyCnpj === cnpjClean && companyCnpj !== "";
+                });
+                console.log("Empresas correspondentes:", JSON.stringify(matchingCompanies, null, 2));
+
+                if (matchingCompanies.length > 0) {
+                    const company = matchingCompanies[0]; // Selecionar a primeira empresa correspondente
+                    companyId = company.ID;
+                    console.log("Empresa selecionada:", JSON.stringify(company, null, 2));
+                    document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
+                    document.getElementById("email").textContent = company.EMAIL?.[0]?.VALUE || "Não informado";
+                    document.getElementById("telefone").textContent = company.PHONE?.[0]?.VALUE || "Não informado";
                     resultDiv.style.display = "block";
                     createDealBtn.style.display = "block";
                 } else {
-                    showStatusMessage("Nenhuma empresa encontrada para o CNPJ: " + cnpjInput, true);
+                    showStatusMessage("Nenhuma empresa encontrada para o CNPJSiscomex correspondente ao CNPJ: " + cnpjInput, true);
+                    resultDiv.style.display = "none";
+                    createDealBtn.style.display = "none";
                 }
             } catch (error) {
                 console.error("Erro na busca:", error);
