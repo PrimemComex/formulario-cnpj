@@ -183,7 +183,7 @@
                     try {
                         console.log(`Tentativa ${attempt} de busca para o CNPJ: ${cnpj}`);
                         const data = await trySearch(cnpj);
-                        console.log("Dados recebidos:", data); // Log para depuração
+                        console.log("Dados recebidos:", JSON.stringify(data, null, 2)); // Log detalhado para depuração
                         return data; // Sucesso, retorna os dados
                     } catch (error) {
                         console.error(`Erro na tentativa ${attempt}:`, error.message);
@@ -222,9 +222,10 @@
                 // Filtrar empresas que realmente tenham o CNPJ correspondente
                 const company = data.result.find(c => {
                     const companyCnpj = c.UF_CRM_25C6A52B ? String(c.UF_CRM_25C6A52B).trim() : "";
-                    console.log("Comparando CNPJ da empresa:", companyCnpj, "com:", cnpjFormatted, "e:", cnpjClean); // Log para depuração
-                    return companyCnpj === cnpjFormatted || companyCnpj === cnpjClean;
-                }) || data.result.find(c => c.TITLE === "PRIMEM COMEX, COMÉRCIO EXTERIOR LTDA"); // Fallback para o título
+                    const cleanCompanyCnpj = cleanCNPJ(companyCnpj);
+                    console.log("Comparando CNPJ da empresa:", companyCnpj, "limpo:", cleanCompanyCnpj, "com:", cnpjFormatted, "e:", cnpjClean); // Log para depuração
+                    return cleanCompanyCnpj === cnpjClean;
+                });
                 if (!company) {
                     showStatusMessage("Nenhuma empresa encontrada com o CNPJ informado.", true);
                     resultDiv.style.display = "none";
