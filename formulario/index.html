@@ -1,180 +1,77 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <title>Formulário de CNPJ</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .form-container { max-width: 400px; padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
-        .error { color: red; display: none; }
-        .result { margin-top: 10px; padding: 10px; border: 1px solid #ddd; display: none; }
-        #create-deal-btn { margin-top: 10px; padding: 10px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; display: none; }
-        #create-deal-btn:hover { background-color: #218838; }
-        #status-message { margin-top: 10px; padding: 10px; border: 1px solid #28a745; color: #28a745; display: none; }
-        #status-message.error { border: 1px solid #ff0000; color: #ff0000; }
-    </style>
-</head>
-<body>
-    <div class="form-container">
-        <h2>Inserir CNPJ</h2>
-        <form id="cnpj-form" enctype="multipart/form-data">
-            <label for="cnpj">CNPJ:</label><br>
-            <input type="text" id="cnpj" name="cnpj" placeholder="99.999.999/9999-99" required><br>
-            <p id="error-message" class="error">CNPJ inválido! Use 14 dígitos (ex.: 12.345.678/0001-99).</p>
-            <label for="conhecimento_embarque">Conhecimento de Embarque:</label><br>
-            <input type="text" id="conhecimento_embarque" name="conhecimento_embarque" placeholder="Digite o conhecimento de embarque" required><br><br>
-            <label for="anexo">Anexar Arquivo (PDF, Imagem, etc.):</label><br>
-            <input type="file" id="anexo" name="anexo" accept=".pdf,.jpg,.jpeg,.png"><br><br>
-            <button type="submit">Buscar Dados</button>
-        </form>
-        <div id="result" class="result">
-            <h3>Dados da Empresa</h3>
-            <p><strong>Razão Social:</strong> <span id="razao_social"></span></p>
-            <p><strong>Email:</strong> <span id="email"></span></p>
-            <p><strong>Telefone:</strong> <span id="telefone"></span></p>
-            <button id="create-deal-btn" onclick="createDeal()">Criar Negócio</button>
-        </div>
-        <div id="status-message"></div>
-    </div>
-    <script>
-        let companyId = null;
-        let fileToUpload = null;
-        let conhecimentoEmbarque = "";
+async function fetchAllPages(cnpjFormatted, cnpjClean) {
+    const proxyUrl = "/.netlify/functions/proxy/";
+    let start = 0;
+    let allResults = [];
+    let total = 0;
 
-        function formatCNPJ(cnpj) {
-            cnpj = cnpj.replace(/[^\d]/g, "");
-            if (cnpj.length === 14) {
-                return `${cnpj.substr(0, 2)}.${cnpj.substr(2, 3)}.${cnpj.substr(5, 3)}/${cnpj.substr(8, 4)}-${cnpj.substr(12, 2)}`;
+    while (true) {
+        const queryUrl = `${proxyUrl}crm.company.list?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpjFormatted)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B&start=${start}`;
+        console.log("URL requisitada:", queryUrl);
+
+        try {
+            const response = await fetch(queryUrl);
+            if (!response.ok) throw new Error("Erro na requisição: " + response.statusText);
+            const data = await response.json();
+            console.log("Resposta da API:", JSON.stringify(data, null, 2));
+
+            if (data.result && data.result.length > 0) {
+                const filteredCompanies = data.result.filter(c => cleanCNPJ(c.UF_CRM_25C6A52B || "") === cnpjClean);
+                allResults = allResults.concat(filteredCompanies);
             }
-            return cnpj;
-        }
 
-        function cleanCNPJ(cnpj) {
-            return cnpj.replace(/[^\d]/g, "").trim();
-        }
-
-        function showStatusMessage(message, isError = false) {
-            const statusDiv = document.getElementById("status-message");
-            statusDiv.textContent = message;
-            statusDiv.style.display = "block";
-            if (isError) statusDiv.classList.add("error"); else statusDiv.classList.remove("error");
-        }
-
-        function fileToBase64(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result.split(',')[1]);
-                reader.onerror = error => reject(error);
-                reader.readAsDataURL(file);
-            });
-        }
-
-        async function fetchAllPages(cnpj) {
-            const proxyUrl = "/.netlify/functions/proxy/";
-            let start = 0;
-            let allResults = [];
-            let total = 0;
-
-            while (true) {
-                const queryUrl = `${proxyUrl}crm.company.list?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpj)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B&start=${start}`;
-                console.log("URL requisitada:", queryUrl);
-                try {
-                    const response = await fetch(queryUrl);
-                    if (!response.ok) throw new Error("Erro na requisição: " + response.statusText);
-                    const data = await response.json();
-                    console.log("Resposta da API:", JSON.stringify(data, null, 2));
-                    if (data.result && data.result.length > 0) allResults = allResults.concat(data.result);
-                    total = data.total || total;
-                    if (data.next && allResults.length < total) start = data.next; else break;
-                } catch (error) {
-                    console.error("Erro ao buscar página:", error);
-                    throw error;
-                }
+            total = data.total || total;
+            if (data.next && allResults.length < total) {
+                start = data.next;
+            } else {
+                break;
             }
-            return allResults;
+        } catch (error) {
+            console.error("Erro ao buscar página:", error);
+            throw error;
         }
+    }
+    return allResults;
+}
 
-        document.getElementById("cnpj-form").addEventListener("submit", async (event) => {
-            event.preventDefault();
-            const cnpjInput = document.getElementById("cnpj").value;
-            const cnpjClean = cleanCNPJ(cnpjInput);
-            const errorMessage = document.getElementById("error-message");
-            const resultDiv = document.getElementById("result");
-            const createDealBtn = document.getElementById("create-deal-btn");
-            fileToUpload = document.getElementById("anexo").files[0];
-            conhecimentoEmbarque = document.getElementById("conhecimento_embarque").value;
+// Funções auxiliares
+function formatCNPJ(cnpj) {
+    cnpj = cnpj.replace(/[^\d]/g, "");
+    if (cnpj.length === 14) {
+        return `${cnpj.substr(0, 2)}.${cnpj.substr(2, 3)}.${cnpj.substr(5, 3)}/${cnpj.substr(8, 4)}-${cnpj.substr(12, 2)}`;
+    }
+    return cnpj;
+}
 
-            if (cnpjClean.length !== 14 || isNaN(cnpjClean)) {
-                errorMessage.style.display = "block";
-                resultDiv.style.display = "none";
-                createDealBtn.style.display = "none";
-                showStatusMessage("CNPJ inválido. Use 14 dígitos.", true);
-                return;
-            }
-            errorMessage.style.display = "none";
+function cleanCNPJ(cnpj) {
+    return cnpj.replace(/[^\d]/g, "").trim();
+}
 
-            try {
-                const companies = await fetchAllPages(cnpjClean);
-                const company = companies.find(c => cleanCNPJ(c.UF_CRM_25C6A52B || "") === cnpjClean);
-                if (!company) {
-                    showStatusMessage("Nenhuma empresa encontrada para o CNPJ: " + formatCNPJ(cnpjClean), true);
-                    resultDiv.style.display = "none";
-                    createDealBtn.style.display = "none";
-                    return;
-                }
-                companyId = company.ID;
-                document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
-                document.getElementById("email").textContent = company.EMAIL?.[0]?.VALUE || "Não informado";
-                document.getElementById("telefone").textContent = company.PHONE?.[0]?.VALUE || "Não informado";
-                resultDiv.style.display = "block";
-                createDealBtn.style.display = "block";
-                showStatusMessage("Empresa encontrada: " + company.TITLE);
-            } catch (error) {
-                showStatusMessage("Erro ao buscar empresa: " + error.message, true);
-            }
-        });
+// Integração com o formulário
+document.getElementById("cnpj-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const cnpjInput = document.getElementById("cnpj").value;
+    const cnpjClean = cleanCNPJ(cnpjInput);
+    const cnpjFormatted = formatCNPJ(cnpjClean);
 
-        async function createDeal() {
-            if (!companyId) {
-                showStatusMessage("Nenhuma empresa selecionada.", true);
-                return;
-            }
-            const proxyUrl = "/.netlify/functions/proxy/";
-            try {
-                const dealFields = {
-                    TITLE: "Conhecimento de embarque desconhecido",
-                    COMPANY_ID: companyId,
-                    UF_CRM_1706725043860: conhecimentoEmbarque
-                };
-                const createDealUrl = `${proxyUrl}crm.deal.add`;
-                console.log("Criando negócio com:", dealFields);
-                const dealResponse = await fetch(createDealUrl, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ fields: dealFields })
-                });
-                if (!dealResponse.ok) throw new Error("Erro ao criar negócio: " + dealResponse.statusText);
-                const dealData = await dealResponse.json();
-                const dealId = dealData.result;
-                showStatusMessage("Negócio criado (ID: " + dealId + ")");
+    if (cnpjClean.length !== 14 || isNaN(cnpjClean)) {
+        alert("CNPJ inválido! Use 14 dígitos (ex.: 12.345.678/0001-99).");
+        return;
+    }
 
-                if (fileToUpload) {
-                    const base64File = await fileToBase64(fileToUpload);
-                    const fileField = { UF_CRM_1745685384: [fileToUpload.name, base64File] };
-                    const updateDealUrl = `${proxyUrl}crm.deal.update?id=${dealId}`;
-                    console.log("Anexando arquivo com:", fileField);
-                    const updateResponse = await fetch(updateDealUrl, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ fields: fileField })
-                    });
-                    if (!updateResponse.ok) throw new Error("Erro ao anexar arquivo: " + updateResponse.statusText);
-                    showStatusMessage("Arquivo anexado com sucesso!");
-                }
-            } catch (error) {
-                showStatusMessage("Erro: " + error.message, true);
-            }
+    try {
+        const companies = await fetchAllPages(cnpjFormatted, cnpjClean);
+        if (companies.length > 0) {
+            const company = companies[0]; // Pega a primeira empresa correspondente
+            console.log("Empresa encontrada:", company);
+            // Exibir os dados no formulário
+            document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
+            document.getElementById("email").textContent = company.EMAIL?.[0]?.VALUE || "Não informado";
+            document.getElementById("telefone").textContent = company.PHONE?.[0]?.VALUE || "Não informado";
+            document.getElementById("result").style.display = "block";
+        } else {
+            alert("Nenhuma empresa encontrada para o CNPJ: " + cnpjFormatted);
         }
-    </script>
-</body>
-</html>
+    } catch (error) {
+        alert("Erro ao buscar empresa: " + error.message);
+    }
+});
