@@ -155,7 +155,7 @@
             const trySearch = async (cnpj) => {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 10000); // Timeout de 10 segundos
-                const queryUrl = `${proxyUrl}crm.company.list?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpj)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE`;
+                const queryUrl = `${proxyUrl}crm.company.list?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpj)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B`;
                 console.log("Tentando buscar empresa com URL:", queryUrl); // Log para depuração
                 try {
                     const response = await fetch(queryUrl, { signal: controller.signal });
@@ -194,12 +194,12 @@
             try {
                 let data = await trySearchWithRetry(cnpjFormatted);
                 if (data.result && data.result.length > 0) {
-                    processCompanyData(data);
+                    processCompanyData(data, cnpjFormatted, cnpjClean);
                 } else {
                     // Tentar com o formato limpo
                     data = await trySearchWithRetry(cnpjClean);
                     if (data.result && data.result.length > 0) {
-                        processCompanyData(data);
+                        processCompanyData(data, cnpjFormatted, cnpjClean);
                     } else {
                         showStatusMessage("Nenhuma empresa encontrada no Bitrix24 para o CNPJ: " + cnpjInput, true);
                         resultDiv.style.display = "none";
@@ -213,11 +213,14 @@
                 createDealBtn.style.display = "none";
             }
 
-            function processCompanyData(data) {
-                // Selecionar a primeira empresa da lista (confiar no filtro UF_CRM_25C6A52B)
-                const company = data.result[0];
+            function processCompanyData(data, cnpjFormatted, cnpjClean) {
+                // Filtrar empresas que realmente tenham o CNPJ correspondente
+                const company = data.result.find(c => {
+                    const companyCnpj = c.UF_CRM_25C6A52B || "";
+                    return companyCnpj === cnpjFormatted || companyCnpj === cnpjClean;
+                });
                 if (!company) {
-                    showStatusMessage("Nenhuma empresa encontrada para o CNPJ informado.", true);
+                    showStatusMessage("Nenhuma empresa encontrada com o CNPJ informado.", true);
                     resultDiv.style.display = "none";
                     createDealBtn.style.display = "none";
                     return;
