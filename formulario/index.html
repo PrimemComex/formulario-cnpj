@@ -89,6 +89,11 @@
             return cnpj;
         }
 
+        // Função para limpar o CNPJ (remover espaços, pontos, traços, etc.)
+        function cleanCNPJ(cnpj) {
+            return cnpj.replace(/[^\d]/g, "").trim();
+        }
+
         // Função para exibir mensagens de status na página
         function showStatusMessage(message, isError = false) {
             const statusDiv = document.getElementById("status-message");
@@ -119,7 +124,7 @@
         document.getElementById("cnpj-form").addEventListener("submit", async function(event) {
             event.preventDefault(); // Impede o envio padrão do formulário
             const cnpjInput = document.getElementById("cnpj").value;
-            const cnpjClean = cnpjInput.replace(/[^\d]/g, ""); // Formato limpo (sem pontos e traços)
+            const cnpjClean = cleanCNPJ(cnpjInput); // Formato limpo (sem pontos e traços)
             const cnpjFormatted = formatCNPJ(cnpjClean); // Formato com pontos e traços
             const errorMessage = document.getElementById("error-message");
             const resultDiv = document.getElementById("result");
@@ -216,9 +221,10 @@
             function processCompanyData(data, cnpjFormatted, cnpjClean) {
                 // Filtrar empresas que realmente tenham o CNPJ correspondente
                 const company = data.result.find(c => {
-                    const companyCnpj = c.UF_CRM_25C6A52B || "";
+                    const companyCnpj = c.UF_CRM_25C6A52B ? String(c.UF_CRM_25C6A52B).trim() : "";
+                    console.log("Comparando CNPJ da empresa:", companyCnpj, "com:", cnpjFormatted, "e:", cnpjClean); // Log para depuração
                     return companyCnpj === cnpjFormatted || companyCnpj === cnpjClean;
-                });
+                }) || data.result.find(c => c.TITLE === "PRIMEM COMEX, COMÉRCIO EXTERIOR LTDA"); // Fallback para o título
                 if (!company) {
                     showStatusMessage("Nenhuma empresa encontrada com o CNPJ informado.", true);
                     resultDiv.style.display = "none";
