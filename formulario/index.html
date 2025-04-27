@@ -136,7 +136,7 @@
             }
 
             // Chamar o Bitrix24 para buscar a empresa
-            const webhookUrl = "https://primem.bitrix24.com.br/rest/89/n3c0pqaz6oln7vb3/";
+            const webhookUrl = "https://primem.bitrix24.com.br/rest/89/2h0usfzkv0bo8jqo/";
             const trySearch = (cnpj) => {
                 const queryUrl = `${webhookUrl}crm.company.list?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpj)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE`;
                 return fetch(queryUrl)
@@ -209,7 +209,7 @@
                 return;
             }
 
-            const webhookUrl = "https://primem.bitrix24.com.br/rest/89/n3c0pqaz6oln7vb3/";
+            const webhookUrl = "https://primem.bitrix24.com.br/rest/89/2h0usfzkv0bo8jqo/";
 
             // Criar o negócio com o campo Conhecimento de Embarque
             const createDealUrl = `${webhookUrl}crm.deal.add?fields[TITLE]=Conhecimento de embarque desconhecido&fields[COMPANY_ID]=${companyId}&fields[UF_CRM_1706725043860]=${encodeURIComponent(conhecimentoEmbarque)}`;
