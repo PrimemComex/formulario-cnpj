@@ -201,7 +201,7 @@
                     if (data.result && data.result.length > 0) {
                         processCompanyData(data);
                     } else {
-                        showStatusMessage("Empresa não encontrada no Bitrix24 para o CNPJ: " + cnpjInput, true);
+                        showStatusMessage("Nenhuma empresa encontrada no Bitrix24 para o CNPJ: " + cnpjInput, true);
                         resultDiv.style.display = "none";
                         createDealBtn.style.display = "none";
                     }
@@ -214,10 +214,10 @@
             }
 
             function processCompanyData(data) {
-                // Filtrar a empresa com o título "PRIMEM COMEX, COMÉRCIO EXTERIOR LTDA"
-                const company = data.result.find(c => c.TITLE === "PRIMEM COMEX, COMÉRCIO EXTERIOR LTDA");
+                // Selecionar a primeira empresa da lista (confiar no filtro UF_CRM_25C6A52B)
+                const company = data.result[0];
                 if (!company) {
-                    showStatusMessage("Empresa 'PRIMEM COMEX, COMÉRCIO EXTERIOR LTDA' não encontrada para o CNPJ informado.", true);
+                    showStatusMessage("Nenhuma empresa encontrada para o CNPJ informado.", true);
                     resultDiv.style.display = "none";
                     createDealBtn.style.display = "none";
                     return;
