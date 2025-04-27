@@ -183,9 +183,9 @@
             const fetchAllPages = async (cnpj) => {
                 let start = 0;
                 let allResults = [];
-                let hasMore = true;
+                let total = 0;
 
-                while (hasMore) {
+                while (true) {
                     try {
                         console.log(`Buscando página a partir de start=${start} para o CNPJ: ${cnpj}`);
                         const data = await fetchPage(cnpj, start);
@@ -194,12 +194,18 @@
                             allResults = allResults.concat(data.result);
                             console.log(`Total de empresas acumuladas até agora: ${allResults.length}`);
                         }
+                        // Verifica o total de resultados
+                        if (data.total) {
+                            total = data.total;
+                            console.log(`Total de resultados disponíveis: ${total}`);
+                        }
                         // Verifica se há mais páginas
-                        if (data.next && data.result.length === 50) { // Se há um 'next' e a página atual retornou 50 resultados
+                        if (data.next && allResults.length < total) {
                             start = data.next; // Atualiza o start para a próxima página
+                            console.log(`Próxima página: start=${start}`);
                         } else {
-                            hasMore = false; // Não há mais páginas
                             console.log(`Fim da paginação. Total de empresas encontradas: ${allResults.length}`);
+                            break; // Sai do loop
                         }
                     } catch (error) {
                         console.error("Erro ao buscar página:", error.message);
