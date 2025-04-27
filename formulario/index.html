@@ -236,32 +236,56 @@
                                 console.log("Enviando arquivo: " + file.name);
                                 console.log("Tamanho do arquivo: " + file.size + " bytes");
 
-                                // Enviar o arquivo para o Bitrix24 usando disk.file.upload
-                                return fetch(`${webhookUrl}disk.file.upload`, {
+                                // Primeiro, criar uma pasta temporária no Bitrix24 para armazenar o arquivo
+                                return fetch(`${webhookUrl}disk.storage.get`, {
                                     method: "POST",
-                                    body: formData,
+                                    body: JSON.stringify({ id: "shared_files_s1" }),
                                     headers: {
+                                        "Content-Type": "application/json",
                                         "Accept": "application/json"
                                     }
                                 })
                                 .then(response => {
                                     if (!response.ok) {
-                                        console.error("Erro ao enviar o arquivo: " + file.name, response.status, response.statusText);
-                                        return response.json().then(errorData => {
-                                            throw new Error("Erro ao enviar o arquivo: " + file.name + " - " + (errorData.error_description || response.statusText));
-                                        });
+                                        throw new Error("Erro ao obter o storage no Bitrix24: " + response.statusText);
                                     }
                                     return response.json();
                                 })
-                                .then(fileData => {
-                                    console.log("Resposta do upload do arquivo:", fileData);
-                                    if (fileData.result && fileData.result.ID) {
-                                        const fileId = fileData.result.ID;
-                                        console.log("Arquivo enviado com sucesso, ID: " + fileId);
-                                        // Associar o arquivo ao campo UF_CRM_1745685384 do negócio
-                                        return fetch(`${webhookUrl}crm.deal.update?id=${dealId}&fields[UF_CRM_1745685384]=${fileId}`);
+                                .then(storageData => {
+                                    if (storageData.result && storageData.result.ID) {
+                                        const storageId = storageData.result.ID;
+                                        console.log("Storage ID obtido: " + storageId);
+
+                                        // Enviar o arquivo para o Bitrix24 usando disk.file.upload
+                                        return fetch(`${webhookUrl}disk.storage.uploadfile?storageId=${storageId}`, {
+                                            method: "POST",
+                                            body: formData,
+                                            headers: {
+                                                "Accept": "application/json"
+                                            }
+                                        })
+                                        .then(response => {
+                                            if (!response.ok) {
+                                                console.error("Erro ao enviar o arquivo: " + file.name, response.status, response.statusText);
+                                                return response.json().then(errorData => {
+                                                    throw new Error("Erro ao enviar o arquivo: " + file.name + " - " + (errorData.error_description || response.statusText));
+                                                });
+                                            }
+                                            return response.json();
+                                        })
+                                        .then(fileData => {
+                                            console.log("Resposta do upload do arquivo:", fileData);
+                                            if (fileData.result && fileData.result.ID) {
+                                                const fileId = fileData.result.ID;
+                                                console.log("Arquivo enviado com sucesso, ID: " + fileId);
+                                                // Associar o arquivo ao campo UF_CRM_1745685384 do negócio
+                                                return fetch(`${webhookUrl}crm.deal.update?id=${dealId}&fields[UF_CRM_1745685384]=${fileId}`);
+                                            } else {
+                                                throw new Error("Erro ao obter o ID do arquivo: " + file.name + " - Resposta inválida do Bitrix24");
+                                            }
+                                        });
                                     } else {
-                                        throw new Error("Erro ao obter o ID do arquivo: " + file.name + " - Resposta inválida do Bitrix24");
+                                        throw new Error("Erro ao obter o storage ID no Bitrix24");
                                     }
                                 })
                                 .catch(error => {
