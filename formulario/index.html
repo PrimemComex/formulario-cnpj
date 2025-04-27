@@ -192,12 +192,14 @@
                         console.log("Dados recebidos:", JSON.stringify(data, null, 2)); // Log detalhado para depuração
                         if (data.result && data.result.length > 0) {
                             allResults = allResults.concat(data.result);
+                            console.log(`Total de empresas acumuladas até agora: ${allResults.length}`);
                         }
                         // Verifica se há mais páginas
-                        if (data.next) {
+                        if (data.next && data.result.length === 50) { // Se há um 'next' e a página atual retornou 50 resultados
                             start = data.next; // Atualiza o start para a próxima página
                         } else {
                             hasMore = false; // Não há mais páginas
+                            console.log(`Fim da paginação. Total de empresas encontradas: ${allResults.length}`);
                         }
                     } catch (error) {
                         console.error("Erro ao buscar página:", error.message);
