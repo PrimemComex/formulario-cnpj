@@ -76,37 +76,29 @@
         <div id="status-message"></div>
     </div>
     <script>
-        let companyId = null; // Armazenar o ID da empresa encontrada
-        let filesToUpload = []; // Armazenar os arquivos anexados
-        let conhecimentoEmbarque = ""; // Armazenar o valor do Conhecimento de Embarque
+        let companyId = null;
+        let filesToUpload = [];
+        let conhecimentoEmbarque = "";
 
-        // Função para formatar o CNPJ no padrão com pontos e traços
         function formatCNPJ(cnpj) {
-            cnpj = cnpj.replace(/[^\d]/g, ""); // Remove tudo que não é dígito
+            cnpj = cnpj.replace(/[^\d]/g, "");
             if (cnpj.length === 14) {
                 return `${cnpj.substr(0, 2)}.${cnpj.substr(2, 3)}.${cnpj.substr(5, 3)}/${cnpj.substr(8, 4)}-${cnpj.substr(12, 2)}`;
             }
             return cnpj;
         }
 
-        // Função para limpar o CNPJ (apenas números)
         function cleanCNPJ(cnpj) {
             return cnpj.replace(/[^\d]/g, "").trim();
         }
 
-        // Função para exibir mensagens de status na página
         function showStatusMessage(message, isError = false) {
             const statusDiv = document.getElementById("status-message");
             statusDiv.textContent = message;
             statusDiv.style.display = "block";
-            if (isError) {
-                statusDiv.classList.add("error");
-            } else {
-                statusDiv.classList.remove("error");
-            }
+            statusDiv.classList.toggle("error", isError);
         }
 
-        // Função para converter arquivo para Base64
         function fileToBase64(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -116,41 +108,6 @@
             });
         }
 
-        // Função para buscar todas as páginas de empresas
-        async function fetchAllPages(cnpjFormatted, cnpjClean) {
-            const proxyUrl = "/.netlify/functions/proxy/";
-            let start = 0;
-            let allResults = [];
-            let total = 0;
-            const fieldCNPJ = "UF_CRM_25C6A52B"; // Ajuste para o campo correto do seu Bitrix24
-
-            while (true) {
-                const queryUrl = `${proxyUrl}crm.company.list?filter[${fieldCNPJ}]=${encodeURIComponent(cnpjFormatted)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=${fieldCNPJ}&start=${start}`;
-                console.log("URL requisitada:", queryUrl);
-                try {
-                    const response = await fetch(queryUrl);
-                    if (!response.ok) throw new Error("Erro na requisição: " + response.statusText);
-                    const data = await response.json();
-                    console.log("Resposta da API:", JSON.stringify(data, null, 2));
-                    if (data.result && data.result.length > 0) {
-                        const filteredCompanies = data.result.filter(c => cleanCNPJ(c[fieldCNPJ] || "") === cnpjClean);
-                        allResults = allResults.concat(filteredCompanies);
-                    }
-                    total = data.total || total;
-                    if (data.next && allResults.length < total) {
-                        start = data.next;
-                    } else {
-                        break;
-                    }
-                } catch (error) {
-                    console.error("Erro ao buscar página:", error);
-                    throw error;
-                }
-            }
-            return allResults;
-        }
-
-        // Manipulador de envio do formulário
         document.getElementById("cnpj-form").addEventListener("submit", async function(event) {
             event.preventDefault();
             const cnpjInput = document.getElementById("cnpj").value;
@@ -166,48 +123,49 @@
                 errorMessage.style.display = "block";
                 resultDiv.style.display = "none";
                 createDealBtn.style.display = "none";
-                showStatusMessage("CNPJ inválido. Use 14 dígitos.", true);
+                showStatusMessage("CNPJ inválido. Por favor, insira 14 dígitos.", true);
                 return;
             }
             errorMessage.style.display = "none";
 
+            const proxyUrl = "/.netlify/functions/proxy/";
+            const queryUrl = `${proxyUrl}crm.company.list?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpjFormatted)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE`;
+
             try {
-                const companies = await fetchAllPages(cnpjFormatted, cnpjClean);
-                const company = companies.find(c => cleanCNPJ(c.UF_CRM_25C6A52B || "") === cnpjClean);
-                if (!company) {
-                    showStatusMessage("Nenhuma empresa encontrada para o CNPJ: " + formatCNPJ(cnpjClean), true);
-                    resultDiv.style.display = "none";
-                    createDealBtn.style.display = "none";
-                    return;
+                const response = await fetch(queryUrl);
+                if (!response.ok) throw new Error("Erro ao buscar empresa: " + response.statusText);
+                const data = await response.json();
+
+                if (data.result && data.result.length > 0) {
+                    companyId = data.result[0].ID;
+                    document.getElementById("razao_social").textContent = data.result[0].TITLE || "Não informado";
+                    document.getElementById("email").textContent = data.result[0].EMAIL?.[0]?.VALUE || "Não informado";
+                    document.getElementById("telefone").textContent = data.result[0].PHONE?.[0]?.VALUE || "Não informado";
+                    resultDiv.style.display = "block";
+                    createDealBtn.style.display = "block";
+                } else {
+                    showStatusMessage("Nenhuma empresa encontrada para o CNPJ: " + cnpjInput, true);
                 }
-                companyId = company.ID;
-                document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
-                document.getElementById("email").textContent = company.EMAIL?.[0]?.VALUE || "Não informado";
-                document.getElementById("telefone").textContent = company.PHONE?.[0]?.VALUE || "Não informado";
-                resultDiv.style.display = "block";
-                createDealBtn.style.display = "block";
-                showStatusMessage("Empresa encontrada: " + company.TITLE);
             } catch (error) {
                 showStatusMessage("Erro ao buscar empresa: " + error.message, true);
             }
         });
 
-        // Função para criar o negócio e anexar arquivos
         async function createDeal() {
             if (!companyId) {
                 showStatusMessage("Nenhuma empresa selecionada.", true);
                 return;
             }
+
             const proxyUrl = "/.netlify/functions/proxy/";
+            const dealFields = {
+                TITLE: "Conhecimento de embarque desconhecido",
+                COMPANY_ID: companyId,
+                UF_CRM_1706725043860: conhecimentoEmbarque
+            };
+
             try {
-                // Criar o negócio
-                const dealFields = {
-                    TITLE: "Conhecimento de embarque desconhecido",
-                    COMPANY_ID: companyId,
-                    UF_CRM_1706725043860: conhecimentoEmbarque
-                };
                 const createDealUrl = `${proxyUrl}crm.deal.add`;
-                console.log("Criando negócio com:", dealFields);
                 const dealResponse = await fetch(createDealUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -218,42 +176,34 @@
                 const dealId = dealData.result;
                 showStatusMessage("Negócio criado (ID: " + dealId + ")");
 
-                // Anexar arquivos
                 if (filesToUpload.length > 0) {
-                    // Primeiro, upload do arquivo para o Bitrix24 Disk
-                    const file = filesToUpload[0]; // Suporta apenas 1 arquivo por agora
+                    const file = filesToUpload[0];
                     const base64File = await fileToBase64(file);
-                    const uploadUrl = `${proxyUrl}disk.file.upload`;
-                    const uploadResponse = await fetch(uploadUrl, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            fileContent: base64File,
-                            name: file.name
-                        })
-                    });
-                    if (!uploadResponse.ok) throw new Error("Erro ao fazer upload do arquivo: " + uploadResponse.statusText);
-                    const uploadData = await uploadResponse.json();
-                    const fileId = uploadData.result.ID;
+                    console.log("Arquivo convertido para Base64: " + file.name);
 
-                    // Anexar o arquivo ao negócio
-                    const attachUrl = `${proxyUrl}crm.deal.update?id=${dealId}`;
-                    const attachData = {
-                        fields: {
-                            UF_CRM_1745685384: fileId // Campo personalizado para arquivos
-                        }
+                    const fileData = {
+                        UF_CRM_1745685384: { fileData: [file.name, base64File] }
                     };
-                    const attachResponse = await fetch(attachUrl, {
+                    const updateDealUrl = `${proxyUrl}crm.deal.update?id=${dealId}`;
+                    console.log("Enviando arquivo com URL:", updateDealUrl, "Dados:", JSON.stringify(fileData, null, 2));
+
+                    const updateResponse = await fetch(updateDealUrl, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(attachData)
+                        body: JSON.stringify({ fields: fileData })
                     });
-                    if (!attachResponse.ok) throw new Error("Erro ao anexar arquivo ao negócio: " + attachResponse.statusText);
+                    const updateData = await updateResponse.json();
+                    console.log("Resposta do upload:", JSON.stringify(updateData, null, 2));
+
+                    if (!updateResponse.ok || !updateData.result) {
+                        throw new Error("Erro ao anexar arquivo: " + (updateData.error_description || updateResponse.statusText));
+                    }
                     showStatusMessage("Arquivo anexado com sucesso!");
                 } else {
-                    showStatusMessage("Nenhum arquivo para anexar.");
+                    showStatusMessage("Nenhum arquivo anexado.");
                 }
             } catch (error) {
+                console.error("Erro:", error);
                 showStatusMessage("Erro: " + error.message, true);
             }
         }
