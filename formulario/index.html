@@ -1,4 +1,4 @@
-<!DOCTYPE html> <html lang="pt-BR"> <head> <meta charset="UTF-8"> <title>Formulário de CNPJ</title> <style> body { font-family: Arial, sans-serif; margin: 20px; } .form-container { max-width: 400px; padding: 20px; border: 1px solid #ccc; border-radius: 5px; } .error { color: red; display: none; } .result { margin-top: 10px; padding: 10px; border: 1px solid #ddd; display: none; } #create-deal-btn { margin-top: 10px; padding: 10px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; display: none; } #create-deal-btn:hover { background-color: #218838; } #status-message { margin-top: 10px; padding: 10px; border: 1px solid #28a745; color: #28a745; display: none; } #status-message.error { border: 1px solid #ff0000; color: #ff0000; } </style> </head> <body> <div class="form-container"> <h2>Inserir CNPJ</h2> <form id="cnpj-form" enctype="multipart/form-data"> <label for="cnpj">CNPJ:</label><br> <input type="text" id="cnpj" name="cnpj" placeholder="99.999.999/9999-99" required><br> <p id="error-message" class="error">CNPJ inválido! Use 14 dígitos (ex.: 12.345.678/0001-99).</p>
+!DOCTYPE html> <html lang="pt-BR"> <head> <meta charset="UTF-8"> <title>Formulário de CNPJ</title> <style> body { font-family: Arial, sans-serif; margin: 20px; } .form-container { max-width: 400px; padding: 20px; border: 1px solid #ccc; border-radius: 5px; } .error { color: red; display: none; } .result { margin-top: 10px; padding: 10px; border: 1px solid #ddd; display: none; } #create-deal-btn { margin-top: 10px; padding: 10px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; display: none; } #create-deal-btn:hover { background-color: #218838; } #status-message { margin-top: 10px; padding: 10px; border: 1px solid #28a745; color: #28a745; display: none; } #status-message.error { border: 1px solid #ff0000; color: #ff0000; } </style> </head> <body> <div class="form-container"> <h2>Inserir CNPJ</h2> <form id="cnpj-form" enctype="multipart/form-data"> <label for="cnpj">CNPJ:</label><br> <input type="text" id="cnpj" name="cnpj" placeholder="99.999.999/9999-99" required><br> <p id="error-message" class="error">CNPJ inválido! Use 14 dígitos (ex.: 12.345.678/0001-99).</p>
 <label for="conhecimento_embarque">Conhecimento de Embarque:</label><br>
 <input type="text" id="conhecimento_embarque" name="conhecimento_embarque" placeholder="Digite o conhecimento de embarque" required><br><br>
 
@@ -57,7 +57,7 @@ throw new Error("Erro ao consultar CNPJ: " + error.message);
 }
 
 async function addCompanyToBitrix(companyData) {
-const companyAddWebhook = "https://primem.bitrix24.com.br/rest/89/novo_token_aqui/crm.company.add";
+const companyAddWebhook = "https://primem.bitrix24.com.br/rest/89/uuwfmn8axrp1iyni/crm.company.add";
 const payload = { fields: companyData };
 console.log("Cadastrando empresa com URL:", companyAddWebhook, "Dados:", JSON.stringify(payload, null, 2));
 const response = await fetch(companyAddWebhook, {
@@ -131,17 +131,13 @@ companyId = companyData.ID;
 showStatusMessage("Empresa encontrada no Bitrix24!");
 } else {
 // CNPJ não encontrado, consultar Receita Federal
+console.log("Entrando no bloco else: CNPJ não encontrado no Bitrix24");
 showStatusMessage("CNPJ não encontrado no Bitrix24. Consultando Receita Federal...");
-try {
 companyData = await fetchCNPJFromReceita(cnpjClean);
 showStatusMessage("CNPJ encontrado na Receita Federal. Cadastrando empresa no Bitrix24...");
 companyId = await addCompanyToBitrix(companyData);
 companyData.ID = companyId;
 showStatusMessage("Empresa cadastrada com sucesso no Bitrix24!");
-} catch (error) {
-showStatusMessage("Erro ao consultar/cadastrar empresa na Receita Federal: " + error.message, true);
-return;
-}
 }
 
 console.log("Empresa selecionada:", JSON.stringify(companyData, null, 2));
