@@ -74,6 +74,7 @@ return data.result; // ID da nova empresa
 
 document.getElementById("cnpj-form").addEventListener("submit", async function(event) {
 event.preventDefault();
+console.log("Evento de submit acionado");
 const cnpjInput = document.getElementById("cnpj").value;
 const cnpjClean = cleanCNPJ(cnpjInput);
 const cnpjFormatted = formatCNPJ(cnpjClean);
