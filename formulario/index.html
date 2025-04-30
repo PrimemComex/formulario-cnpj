@@ -1,4 +1,4 @@
-01:02
+01:10
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -302,8 +302,8 @@
                 COMPANY_ID: companyId || null,
                 UF_CRM_1706725043860: conhecimentoEmbarque,
                 UF_CRM_25C6A52B: empresaData.cnpj, // CNPJ
-                UF_CRM_1684258348_formatted: empresaData.endereco, // Endereço
-                COMMENTS: "Conhecimento de embarque desconhecido", // Movendo o valor fixo para COMMENTS
+                UF_CRM_1684258348: empresaData.endereco, // Endereço (usando UF_CRM_1684258348 em vez de UF_CRM_1684258348_formatted)
+                COMMENTS: "Conhecimento de embarque desconhecido", // Valor fixo movido para COMMENTS
                 EMAIL: empresaData.emails
                     .filter(email => email !== "Não informado")
                     .map(email => ({ VALUE: email, VALUE_TYPE: "WORK" })), // Emails
