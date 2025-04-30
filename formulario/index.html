@@ -1,4 +1,4 @@
-00:14
+00:19
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -70,8 +70,9 @@
         <div id="result" class="result">
             <h3>Dados da Empresa</h3>
             <p><strong>Razão Social:</strong> <span id="razao_social"></span></p>
-            <p><strong>Email:</strong> <span id="email"></span></p>
-            <p><strong>Telefone:</strong> <span id="telefone"></span></p>
+            <p><strong>Emails:</strong> <span id="emails"></span></p>
+            <p><strong>Telefones:</strong> <span id="telefones"></span></p>
+            <p><strong>Endereço:</strong> <span id="endereco"></span></p>
             <button id="create-deal-btn" onclick="createDeal()">Criar Negócio</button>
         </div>
         <div id="status-message"></div>
@@ -123,8 +124,12 @@
                 console.log("Dados retornados pela BrasilAPI:", JSON.stringify(data, null, 2));
                 return {
                     razaoSocial: data.razao_social || "Não informado",
-                    email: data.email || "Não informado",
-                    telefone: data.ddd_telefone_1 || "Não informado"
+                    emails: [data.email || "Não informado"],
+                    telefones: [
+                        data.ddd_telefone_1 || "Não informado",
+                        data.ddd_telefone_2 || null
+                    ].filter(tel => tel !== null),
+                    endereco: `${data.logradouro || "Não informado"}, ${data.numero || "S/N"}, ${data.bairro || "Não informado"}, ${data.municipio || "Não informado"} - ${data.uf || "Não informado"}`
                 };
             } catch (error) {
                 console.error("Erro na consulta à BrasilAPI:", error.message);
@@ -167,7 +172,7 @@
             }
 
             const companyListWebhook = "https://primem.bitrix24.com.br/rest/89/2h0usfzkv0bo8jqo/crm.company.list";
-            const queryUrl = `${companyListWebhook}?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpjFormatted)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B`;
+            const queryUrl = `${companyListWebhook}?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpjFormatted)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B&select[]=ADDRESS&select[]=ADDRESS_CITY&select[]=ADDRESS_REGION&select[]=ADDRESS_PROVINCE`;
 
             try {
                 console.log("Buscando empresa com URL:", queryUrl);
@@ -189,8 +194,24 @@
                     companyId = company.ID;
                     console.log("Empresa selecionada:", JSON.stringify(company, null, 2));
                     document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
-                    document.getElementById("email").textContent = company.EMAIL?.[0]?.VALUE || "Não informado";
-                    document.getElementById("telefone").textContent = company.PHONE?.[0]?.VALUE || "Não informado";
+
+                    // Exibir todos os emails
+                    const emails = company.EMAIL ? company.EMAIL.map(email => email.VALUE).join(", ") : "Não informado";
+                    document.getElementById("emails").textContent = emails;
+
+                    // Exibir todos os telefones
+                    const telefones = company.PHONE ? company.PHONE.map(phone => phone.VALUE).join(", ") : "Não informado";
+                    document.getElementById("telefones").textContent = telefones;
+
+                    // Exibir endereço completo
+                    const endereco = [
+                        company.ADDRESS || "Não informado",
+                        company.ADDRESS_REGION || "",
+                        company.ADDRESS_CITY || "",
+                        company.ADDRESS_PROVINCE || ""
+                    ].filter(part => part).join(", ");
+                    document.getElementById("endereco").textContent = endereco || "Não informado";
+
                     showStatusMessage("Empresa encontrada no Bitrix24!");
                 } else {
                     console.log("Empresa não encontrada no Bitrix24. Consultando Receita Federal...");
@@ -199,15 +220,17 @@
                         const receitaData = await fetchCNPJFromReceita(cnpjClean);
                         companyId = null;
                         document.getElementById("razao_social").textContent = receitaData.razaoSocial;
-                        document.getElementById("email").textContent = receitaData.email;
-                        document.getElementById("telefone").textContent = receitaData.telefone;
+                        document.getElementById("emails").textContent = receitaData.emails.join(", ");
+                        document.getElementById("telefones").textContent = receitaData.telefones.join(", ");
+                        document.getElementById("endereco").textContent = receitaData.endereco;
                         showStatusMessage("Dados da empresa obtidos na Receita Federal!");
                     } catch (error) {
                         console.error("Erro ao consultar Receita Federal:", error.message);
                         companyId = null;
                         document.getElementById("razao_social").textContent = "Não informado";
-                        document.getElementById("email").textContent = "Não informado";
-                        document.getElementById("telefone").textContent = "Não informado";
+                        document.getElementById("emails").textContent = "Não informado";
+                        document.getElementById("telefones").textContent = "Não informado";
+                        document.getElementById("endereco").textContent = "Não informado";
                         showStatusMessage("Erro ao consultar Receita Federal: " + error.message + ". Prosseguindo com CNPJ informado: " + cnpjInput);
                     }
                 }
@@ -218,8 +241,9 @@
                 console.error("Erro na busca no Bitrix24:", error);
                 companyId = null;
                 document.getElementById("razao_social").textContent = "Não informado";
-                document.getElementById("email").textContent = "Não informado";
-                document.getElementById("telefone").textContent = "Não informado";
+                document.getElementById("emails").textContent = "Não informado";
+                document.getElementById("telefones").textContent = "Não informado";
+                document.getElementById("endereco").textContent = "Não informado";
                 showStatusMessage("Erro ao buscar empresa no Bitrix24: " + error.message + ". Prosseguindo com CNPJ informado: " + cnpjInput);
                 resultDiv.style.display = "block";
                 createDealBtn.style.display = "block";
