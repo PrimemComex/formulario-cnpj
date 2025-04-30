@@ -1,4 +1,4 @@
-00:04
+00:14
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -112,27 +112,22 @@
 
         async function fetchCNPJFromReceita(cnpjClean) {
             try {
-                console.log("Consultando CNPJ na Receita Federal:", cnpjClean);
-                // Usando um proxy CORS temporário para contornar o bloqueio de CORS
-                const proxyUrl = "https://cors-anywhere.herokuapp.com/";
-                const apiUrl = `https://www.receitaws.com.br/v1/cnpj/${cnpjClean}`;
-                const response = await fetch(proxyUrl + apiUrl);
-                console.log("Resposta da API da Receita:", response.status, response.statusText);
+                console.log("Consultando CNPJ na BrasilAPI:", cnpjClean);
+                const apiUrl = `https://brasilapi.com.br/api/cnpj/v1/${cnpjClean}`;
+                const response = await fetch(apiUrl);
+                console.log("Resposta da BrasilAPI:", response.status, response.statusText);
                 if (!response.ok) {
-                    throw new Error(`Erro ao consultar CNPJ na Receita Federal: ${response.statusText} (Status: ${response.status})`);
+                    throw new Error(`Erro ao consultar CNPJ na BrasilAPI: ${response.statusText} (Status: ${response.status})`);
                 }
                 const data = await response.json();
-                console.log("Dados retornados pela API da Receita:", JSON.stringify(data, null, 2));
-                if (data.status !== "OK") {
-                    throw new Error(`CNPJ não encontrado ou inválido na Receita Federal: ${data.message || "Erro desconhecido"}`);
-                }
+                console.log("Dados retornados pela BrasilAPI:", JSON.stringify(data, null, 2));
                 return {
-                    razaoSocial: data.nome || "Não informado",
+                    razaoSocial: data.razao_social || "Não informado",
                     email: data.email || "Não informado",
-                    telefone: data.telefone || "Não informado"
+                    telefone: data.ddd_telefone_1 || "Não informado"
                 };
             } catch (error) {
-                console.error("Erro na consulta à Receita Federal:", error.message);
+                console.error("Erro na consulta à BrasilAPI:", error.message);
                 throw error;
             }
         }
