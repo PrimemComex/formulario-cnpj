@@ -1,4 +1,4 @@
-00:56
+01:02
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -298,12 +298,12 @@
         async function createDeal() {
             const dealAddWebhook = "https://primem.bitrix24.com.br/rest/89/8csyfkefuj46r22z/crm.deal.add";
             const dealFields = {
-                TITLE: "Conhecimento de embarque desconhecido",
+                TITLE: empresaData.razaoSocial, // Razão Social
                 COMPANY_ID: companyId || null,
                 UF_CRM_1706725043860: conhecimentoEmbarque,
                 UF_CRM_25C6A52B: empresaData.cnpj, // CNPJ
                 UF_CRM_1684258348_formatted: empresaData.endereco, // Endereço
-                COMMENTS: `Razão Social: ${empresaData.razaoSocial}`, // Razão Social no campo COMMENTS
+                COMMENTS: "Conhecimento de embarque desconhecido", // Movendo o valor fixo para COMMENTS
                 EMAIL: empresaData.emails
                     .filter(email => email !== "Não informado")
                     .map(email => ({ VALUE: email, VALUE_TYPE: "WORK" })), // Emails
