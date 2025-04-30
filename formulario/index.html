@@ -1,4 +1,4 @@
-01:21
+01:29
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -130,14 +130,18 @@
                 }
                 const data = await response.json();
                 console.log("Dados retornados pela BrasilAPI:", JSON.stringify(data, null, 2));
+
+                // Adicionar o código do país +55 aos números de telefone
+                const telefones = [
+                    data.ddd_telefone_1 ? `+55${data.ddd_telefone_1}` : "Não informado",
+                    data.ddd_telefone_2 ? `+55${data.ddd_telefone_2}` : null
+                ].filter(tel => tel !== null);
+
                 return {
                     cnpj: cnpjClean,
                     razaoSocial: data.razao_social || "Não informado",
                     emails: [data.email || "Não informado"],
-                    telefones: [
-                        data.ddd_telefone_1 || "Não informado",
-                        data.ddd_telefone_2 || null
-                    ].filter(tel => tel !== null),
+                    telefones: telefones,
                     endereco: `${data.logradouro || "Não informado"}, ${data.numero || "S/N"}, ${data.bairro || "Não informado"}, ${data.municipio || "Não informado"} - ${data.uf || "Não informado"}`
                 };
             } catch (error) {
