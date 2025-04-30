@@ -1,4 +1,4 @@
-00:43
+00:56
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -204,15 +204,12 @@
                     console.log("Empresa selecionada:", JSON.stringify(company, null, 2));
                     document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
 
-                    // Exibir todos os emails
                     const emails = company.EMAIL ? company.EMAIL.map(email => email.VALUE).join(", ") : "Não informado";
                     document.getElementById("emails").textContent = emails;
 
-                    // Exibir todos os telefones
                     const telefones = company.PHONE ? company.PHONE.map(phone => phone.VALUE).join(", ") : "Não informado";
                     document.getElementById("telefones").textContent = telefones;
 
-                    // Exibir endereço completo
                     const endereco = [
                         company.ADDRESS || "Não informado",
                         company.ADDRESS_REGION || "",
@@ -221,7 +218,6 @@
                     ].filter(part => part).join(", ");
                     document.getElementById("endereco").textContent = endereco || "Não informado";
 
-                    // Armazenar os dados para uso no createDeal
                     empresaData = {
                         cnpj: cnpjFormatted,
                         razaoSocial: company.TITLE || "Não informado",
@@ -242,7 +238,6 @@
                         document.getElementById("telefones").textContent = receitaData.telefones.join(", ");
                         document.getElementById("endereco").textContent = receitaData.endereco;
 
-                        // Armazenar os dados para uso no createDeal
                         empresaData = {
                             cnpj: cnpjFormatted,
                             razaoSocial: receitaData.razaoSocial,
@@ -251,7 +246,11 @@
                             endereco: receitaData.endereco
                         };
 
-                        showStatusMessage("Dados da empresa obtidos na Receita Federal!");
+                        if (receitaData.emails.includes("Não informado")) {
+                            showStatusMessage("Dados da empresa obtidos na Receita Federal, mas o email não foi encontrado na base pública. Prosseguindo com CNPJ informado: " + cnpjInput);
+                        } else {
+                            showStatusMessage("Dados da empresa obtidos na Receita Federal!");
+                        }
                     } catch (error) {
                         console.error("Erro ao consultar Receita Federal:", error.message);
                         companyId = null;
@@ -260,7 +259,6 @@
                         document.getElementById("telefones").textContent = "Não informado";
                         document.getElementById("endereco").textContent = "Não informado";
 
-                        // Armazenar dados padrão em caso de erro
                         empresaData = {
                             cnpj: cnpjFormatted,
                             razaoSocial: "Não informado",
@@ -283,7 +281,6 @@
                 document.getElementById("telefones").textContent = "Não informado";
                 document.getElementById("endereco").textContent = "Não informado";
 
-                // Armazenar dados padrão em caso de erro
                 empresaData = {
                     cnpj: cnpjFormatted,
                     razaoSocial: "Não informado",
@@ -301,13 +298,18 @@
         async function createDeal() {
             const dealAddWebhook = "https://primem.bitrix24.com.br/rest/89/8csyfkefuj46r22z/crm.deal.add";
             const dealFields = {
-                TITLE: "Conhecimento de embarque desconhecido", // Nome fixo do negócio
+                TITLE: "Conhecimento de embarque desconhecido",
                 COMPANY_ID: companyId || null,
                 UF_CRM_1706725043860: conhecimentoEmbarque,
                 UF_CRM_25C6A52B: empresaData.cnpj, // CNPJ
                 UF_CRM_1684258348_formatted: empresaData.endereco, // Endereço
-                EMAIL: empresaData.emails.map(email => ({ VALUE: email, VALUE_TYPE: "WORK" })), // Emails
-                PHONE: empresaData.telefones.map(phone => ({ VALUE: phone, VALUE_TYPE: "WORK" })) // Telefones
+                COMMENTS: `Razão Social: ${empresaData.razaoSocial}`, // Razão Social no campo COMMENTS
+                EMAIL: empresaData.emails
+                    .filter(email => email !== "Não informado")
+                    .map(email => ({ VALUE: email, VALUE_TYPE: "WORK" })), // Emails
+                PHONE: empresaData.telefones
+                    .filter(phone => phone !== "Não informado")
+                    .map(phone => ({ VALUE: phone, VALUE_TYPE: "WORK" })) // Telefones
             };
 
             try {
