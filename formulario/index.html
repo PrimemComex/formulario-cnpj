@@ -79,7 +79,7 @@
         let companyId = null;
         let filesToUpload = [];
         let conhecimentoEmbarque = "";
-        let cnpjInputValue = ""; // Para armazenar o CNPJ informado
+        let cnpjInputValue = "";
 
         function formatCNPJ(cnpj) {
             cnpj = cnpj.replace(/[^\d]/g, "");
@@ -109,11 +109,30 @@
             });
         }
 
+        async function fetchCNPJFromReceita(cnpjClean) {
+            try {
+                console.log("Consultando CNPJ na Receita Federal:", cnpjClean);
+                const response = await fetch(`https://www.receitaws.com.br/v1/cnpj/${cnpjClean}`);
+                console.log("Resposta da API da Receita:", response.status, response.statusText);
+                if (!response.ok) throw new Error("Erro ao consultar CNPJ na Receita Federal: " + response.statusText);
+                const data = await response.json();
+                console.log("Dados retornados pela API da Receita:", JSON.stringify(data, null, 2));
+                if (data.status !== "OK") throw new Error("CNPJ não encontrado ou inválido na Receita Federal: " + (data.message || "Erro desconhecido"));
+                return {
+                    razaoSocial: data.nome,
+                    email: data.email || "Não informado",
+                    telefone: data.telefone || "Não informado"
+                };
+            } catch (error) {
+                throw new Error("Erro ao consultar CNPJ: " + error.message);
+            }
+        }
+
         document.getElementById("cnpj-form").addEventListener("submit", async function(event) {
             event.preventDefault();
             console.log("Evento de submit acionado");
             const cnpjInput = document.getElementById("cnpj").value;
-            cnpjInputValue = cnpjInput; // Armazenar o CNPJ informado
+            cnpjInputValue = cnpjInput;
             const cnpjClean = cleanCNPJ(cnpjInput);
             const cnpjFormatted = formatCNPJ(cnpjClean);
             const errorMessage = document.getElementById("error-message");
@@ -131,7 +150,6 @@
             }
             errorMessage.style.display = "none";
 
-            // Verificar arquivos anexados
             let fileNames = [];
             if (filesToUpload.length > 0) {
                 for (let i = 0; i < filesToUpload.length; i++) {
@@ -144,7 +162,6 @@
                 showStatusMessage("Nenhum arquivo anexado.");
             }
 
-            // Webhook para buscar empresas (crm.company.list)
             const companyListWebhook = "https://primem.bitrix24.com.br/rest/89/2h0usfzkv0bo8jqo/crm.company.list";
             const queryUrl = `${companyListWebhook}?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpjFormatted)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B`;
 
@@ -155,7 +172,6 @@
                 const data = await response.json();
                 console.log("Resposta da busca:", JSON.stringify(data, null, 2));
 
-                // Filtrar empresas que realmente correspondem ao CNPJ
                 const matchingCompanies = data.result.filter(company => {
                     const companyCnpj = company.UF_CRM_25C6A52B ? String(company.UF_CRM_25C6A52B).trim() : "";
                     const cleanCompanyCnpj = cleanCNPJ(companyCnpj);
@@ -165,7 +181,7 @@
                 console.log("Empresas correspondentes:", JSON.stringify(matchingCompanies, null, 2));
 
                 if (matchingCompanies.length > 0) {
-                    const company = matchingCompanies[0]; // Selecionar a primeira empresa correspondente
+                    const company = matchingCompanies[0];
                     companyId = company.ID;
                     console.log("Empresa selecionada:", JSON.stringify(company, null, 2));
                     document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
@@ -173,19 +189,29 @@
                     document.getElementById("telefone").textContent = company.PHONE?.[0]?.VALUE || "Não informado";
                     showStatusMessage("Empresa encontrada no Bitrix24!");
                 } else {
-                    console.log("Empresa não encontrada no Bitrix24. Prosseguindo com CNPJ informado.");
-                    companyId = null; // Não temos empresa associada
-                    document.getElementById("razao_social").textContent = "Não informado";
-                    document.getElementById("email").textContent = "Não informado";
-                    document.getElementById("telefone").textContent = "Não informado";
-                    showStatusMessage("Empresa não encontrada no Bitrix24. Prosseguindo com CNPJ informado: " + cnpjInput);
+                    console.log("Empresa não encontrada no Bitrix24. Consultando Receita Federal...");
+                    showStatusMessage("Empresa não encontrada no Bitrix24. Consultando Receita Federal...");
+                    try {
+                        const receitaData = await fetchCNPJFromReceita(cnpjClean);
+                        companyId = null; // Não criamos empresa no Bitrix24
+                        document.getElementById("razao_social").textContent = receitaData.razaoSocial || "Não informado";
+                        document.getElementById("email").textContent = receitaData.email || "Não informado";
+                        document.getElementById("telefone").textContent = receitaData.telefone || "Não informado";
+                        showStatusMessage("Dados da empresa obtidos na Receita Federal!");
+                    } catch (error) {
+                        console.error("Erro ao consultar Receita Federal:", error);
+                        companyId = null;
+                        document.getElementById("razao_social").textContent = "Não informado";
+                        document.getElementById("email").textContent = "Não informado";
+                        document.getElementById("telefone").textContent = "Não informado";
+                        showStatusMessage("Erro ao consultar Receita Federal: " + error.message + ". Prosseguindo com CNPJ informado: " + cnpjInput);
+                    }
                 }
 
                 resultDiv.style.display = "block";
                 createDealBtn.style.display = "block";
             } catch (error) {
                 console.error("Erro na busca:", error);
-                // Mesmo que haja erro na busca no Bitrix24, prosseguir com o CNPJ informado
                 companyId = null;
                 document.getElementById("razao_social").textContent = "Não informado";
                 document.getElementById("email").textContent = "Não informado";
@@ -197,11 +223,10 @@
         });
 
         async function createDeal() {
-            // Webhook para criar negócios (crm.deal.add)
             const dealAddWebhook = "https://primem.bitrix24.com.br/rest/89/8csyfkefuj46r22z/crm.deal.add";
             const dealFields = {
                 TITLE: companyId ? "Conhecimento de embarque desconhecido" : `Negócio para CNPJ: ${cnpjInputValue}`,
-                COMPANY_ID: companyId || null, // COMPANY_ID será null se a empresa não for encontrada
+                COMPANY_ID: companyId || null,
                 UF_CRM_1706725043860: conhecimentoEmbarque
             };
 
@@ -228,7 +253,6 @@
                     const base64File = await fileToBase64(file);
                     console.log("Arquivo convertido para Base64: " + file.name);
 
-                    // Webhook para atualizar negócios (crm.deal.update)
                     const dealUpdateWebhook = "https://primem.bitrix24.com.br/rest/89/chy7e1hyc3ns9svu/crm.deal.update";
                     const fileData = {
                         id: dealId,
