@@ -79,6 +79,7 @@
         let companyId = null;
         let filesToUpload = [];
         let conhecimentoEmbarque = "";
+        let cnpjInputValue = ""; // Para armazenar o CNPJ informado
 
         function formatCNPJ(cnpj) {
             cnpj = cnpj.replace(/[^\d]/g, "");
@@ -110,7 +111,9 @@
 
         document.getElementById("cnpj-form").addEventListener("submit", async function(event) {
             event.preventDefault();
+            console.log("Evento de submit acionado");
             const cnpjInput = document.getElementById("cnpj").value;
+            cnpjInputValue = cnpjInput; // Armazenar o CNPJ informado
             const cnpjClean = cleanCNPJ(cnpjInput);
             const cnpjFormatted = formatCNPJ(cnpjClean);
             const errorMessage = document.getElementById("error-message");
@@ -128,99 +131,90 @@
             }
             errorMessage.style.display = "none";
 
-            try {
-                const companyListWebhook = "https://primem.bitrix24.com.br/rest/89/2h0usfzkv0bo8jqo/crm.company.list";
-                const queryUrl = `${companyListWebhook}?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpjFormatted)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B`;
+            // Verificar arquivos anexados
+            let fileNames = [];
+            if (filesToUpload.length > 0) {
+                for (let i = 0; i < filesToUpload.length; i++) {
+                    fileNames.push(filesToUpload[i].name);
+                }
+                console.log("Arquivos anexados: " + fileNames.join(", "));
+                showStatusMessage("Arquivos anexados: " + fileNames.join(", "));
+            } else {
+                console.log("Nenhum arquivo anexado.");
+                showStatusMessage("Nenhum arquivo anexado.");
+            }
 
+            // Webhook para buscar empresas (crm.company.list)
+            const companyListWebhook = "https://primem.bitrix24.com.br/rest/89/2h0usfzkv0bo8jqo/crm.company.list";
+            const queryUrl = `${companyListWebhook}?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpjFormatted)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B`;
+
+            try {
+                console.log("Buscando empresa com URL:", queryUrl);
                 const response = await fetch(queryUrl);
                 if (!response.ok) throw new Error("Erro ao buscar empresa: " + response.statusText);
                 const data = await response.json();
+                console.log("Resposta da busca:", JSON.stringify(data, null, 2));
 
+                // Filtrar empresas que realmente correspondem ao CNPJ
                 const matchingCompanies = data.result.filter(company => {
                     const companyCnpj = company.UF_CRM_25C6A52B ? String(company.UF_CRM_25C6A52B).trim() : "";
                     const cleanCompanyCnpj = cleanCNPJ(companyCnpj);
+                    console.log("Comparando CNPJ da empresa:", companyCnpj, "limpo:", cleanCompanyCnpj, "com:", cnpjClean);
                     return cleanCompanyCnpj === cnpjClean && companyCnpj !== "";
                 });
+                console.log("Empresas correspondentes:", JSON.stringify(matchingCompanies, null, 2));
 
                 if (matchingCompanies.length > 0) {
-                    const company = matchingCompanies[0];
+                    const company = matchingCompanies[0]; // Selecionar a primeira empresa correspondente
                     companyId = company.ID;
+                    console.log("Empresa selecionada:", JSON.stringify(company, null, 2));
                     document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
                     document.getElementById("email").textContent = company.EMAIL?.[0]?.VALUE || "Não informado";
                     document.getElementById("telefone").textContent = company.PHONE?.[0]?.VALUE || "Não informado";
-                    resultDiv.style.display = "block";
-                    createDealBtn.style.display = "block";
+                    showStatusMessage("Empresa encontrada no Bitrix24!");
                 } else {
-                    showStatusMessage("Nenhuma empresa encontrada. Criando nova empresa...");
-                    const newCompany = await createCompany(cnpjFormatted);
-                    companyId = newCompany.ID;
-                    
-                    document.getElementById("razao_social").textContent = cnpjFormatted;
+                    console.log("Empresa não encontrada no Bitrix24. Prosseguindo com CNPJ informado.");
+                    companyId = null; // Não temos empresa associada
+                    document.getElementById("razao_social").textContent = "Não informado";
                     document.getElementById("email").textContent = "Não informado";
                     document.getElementById("telefone").textContent = "Não informado";
-                    resultDiv.style.display = "block";
-                    createDealBtn.style.display = "block";
-                    showStatusMessage("Nova empresa criada com sucesso!");
+                    showStatusMessage("Empresa não encontrada no Bitrix24. Prosseguindo com CNPJ informado: " + cnpjInput);
                 }
+
+                resultDiv.style.display = "block";
+                createDealBtn.style.display = "block";
             } catch (error) {
                 console.error("Erro na busca:", error);
-                showStatusMessage("Erro ao processar empresa: " + error.message, true);
+                // Mesmo que haja erro na busca no Bitrix24, prosseguir com o CNPJ informado
+                companyId = null;
+                document.getElementById("razao_social").textContent = "Não informado";
+                document.getElementById("email").textContent = "Não informado";
+                document.getElementById("telefone").textContent = "Não informado";
+                showStatusMessage("Erro ao buscar empresa no Bitrix24: " + error.message + ". Prosseguindo com CNPJ informado: " + cnpjInput);
+                resultDiv.style.display = "block";
+                createDealBtn.style.display = "block";
             }
         });
 
-        async function createCompany(cnpj) {
-            const companyAddWebhook = "https://primem.bitrix24.com.br/rest/89/2h0usfzkv0bo8jqo/crm.company.add";
-            
-            const companyData = {
-                fields: {
-                    TITLE: cnpj,
-                    UF_CRM_25C6A52B: cnpj
-                }
-            };
-
-            try {
-                const response = await fetch(companyAddWebhook, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(companyData)
-                });
-                
-                if (!response.ok) throw new Error("Erro ao criar empresa: " + response.statusText);
-                const data = await response.json();
-                
-                if (!data.result) {
-                    throw new Error("Falha ao criar empresa: " + (data.error_description || "Erro desconhecido"));
-                }
-                
-                return { ID: data.result };
-            } catch (error) {
-                console.error("Erro na criação da empresa:", error);
-                throw error;
-            }
-        }
-
         async function createDeal() {
-            if (!companyId) {
-                showStatusMessage("Nenhuma empresa selecionada.", true);
-                return;
-            }
-
+            // Webhook para criar negócios (crm.deal.add)
             const dealAddWebhook = "https://primem.bitrix24.com.br/rest/89/8csyfkefuj46r22z/crm.deal.add";
             const dealFields = {
-                TITLE: "Conhecimento de embarque desconhecido",
-                COMPANY_ID: companyId,
+                TITLE: companyId ? "Conhecimento de embarque desconhecido" : `Negócio para CNPJ: ${cnpjInputValue}`,
+                COMPANY_ID: companyId || null, // COMPANY_ID será null se a empresa não for encontrada
                 UF_CRM_1706725043860: conhecimentoEmbarque
             };
 
             try {
+                console.log("Criando negócio com URL:", dealAddWebhook, "Dados:", JSON.stringify(dealFields, null, 2));
                 const dealResponse = await fetch(dealAddWebhook, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ fields: dealFields })
                 });
-                
                 if (!dealResponse.ok) throw new Error("Erro ao criar negócio: " + dealResponse.statusText);
                 const dealData = await dealResponse.json();
+                console.log("Resposta da criação do negócio:", JSON.stringify(dealData, null, 2));
                 
                 if (!dealData.result) {
                     throw new Error("Falha ao criar negócio: " + (dealData.error_description || "Erro desconhecido"));
@@ -232,7 +226,9 @@
                 if (filesToUpload.length > 0) {
                     const file = filesToUpload[0];
                     const base64File = await fileToBase64(file);
+                    console.log("Arquivo convertido para Base64: " + file.name);
 
+                    // Webhook para atualizar negócios (crm.deal.update)
                     const dealUpdateWebhook = "https://primem.bitrix24.com.br/rest/89/chy7e1hyc3ns9svu/crm.deal.update";
                     const fileData = {
                         id: dealId,
@@ -240,6 +236,7 @@
                             UF_CRM_1745685384: { fileData: [file.name, base64File] }
                         }
                     };
+                    console.log("Enviando arquivo com URL:", dealUpdateWebhook, "Dados:", JSON.stringify(fileData, null, 2));
 
                     const updateResponse = await fetch(dealUpdateWebhook, {
                         method: "POST",
@@ -247,11 +244,14 @@
                         body: JSON.stringify(fileData)
                     });
                     const updateData = await updateResponse.json();
+                    console.log("Resposta do upload:", JSON.stringify(updateData, null, 2));
 
                     if (!updateResponse.ok || !updateData.result) {
                         throw new Error("Erro ao anexar arquivo: " + (updateData.error_description || updateResponse.statusText));
                     }
                     showStatusMessage("Arquivo anexado com sucesso!");
+                } else {
+                    showStatusMessage("Nenhum arquivo anexado.");
                 }
             } catch (error) {
                 console.error("Erro:", error);
