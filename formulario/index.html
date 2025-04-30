@@ -1,4 +1,4 @@
-00:19
+00:43
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -82,6 +82,14 @@
         let filesToUpload = [];
         let conhecimentoEmbarque = "";
         let cnpjInputValue = "";
+        // Variáveis globais para armazenar os dados da BrasilAPI
+        let empresaData = {
+            cnpj: "",
+            razaoSocial: "Não informado",
+            emails: ["Não informado"],
+            telefones: ["Não informado"],
+            endereco: "Não informado"
+        };
 
         function formatCNPJ(cnpj) {
             cnpj = cnpj.replace(/[^\d]/g, "");
@@ -123,6 +131,7 @@
                 const data = await response.json();
                 console.log("Dados retornados pela BrasilAPI:", JSON.stringify(data, null, 2));
                 return {
+                    cnpj: cnpjClean,
                     razaoSocial: data.razao_social || "Não informado",
                     emails: [data.email || "Não informado"],
                     telefones: [
@@ -212,6 +221,15 @@
                     ].filter(part => part).join(", ");
                     document.getElementById("endereco").textContent = endereco || "Não informado";
 
+                    // Armazenar os dados para uso no createDeal
+                    empresaData = {
+                        cnpj: cnpjFormatted,
+                        razaoSocial: company.TITLE || "Não informado",
+                        emails: company.EMAIL ? company.EMAIL.map(email => email.VALUE) : ["Não informado"],
+                        telefones: company.PHONE ? company.PHONE.map(phone => phone.VALUE) : ["Não informado"],
+                        endereco: endereco || "Não informado"
+                    };
+
                     showStatusMessage("Empresa encontrada no Bitrix24!");
                 } else {
                     console.log("Empresa não encontrada no Bitrix24. Consultando Receita Federal...");
@@ -223,6 +241,16 @@
                         document.getElementById("emails").textContent = receitaData.emails.join(", ");
                         document.getElementById("telefones").textContent = receitaData.telefones.join(", ");
                         document.getElementById("endereco").textContent = receitaData.endereco;
+
+                        // Armazenar os dados para uso no createDeal
+                        empresaData = {
+                            cnpj: cnpjFormatted,
+                            razaoSocial: receitaData.razaoSocial,
+                            emails: receitaData.emails,
+                            telefones: receitaData.telefones,
+                            endereco: receitaData.endereco
+                        };
+
                         showStatusMessage("Dados da empresa obtidos na Receita Federal!");
                     } catch (error) {
                         console.error("Erro ao consultar Receita Federal:", error.message);
@@ -231,6 +259,16 @@
                         document.getElementById("emails").textContent = "Não informado";
                         document.getElementById("telefones").textContent = "Não informado";
                         document.getElementById("endereco").textContent = "Não informado";
+
+                        // Armazenar dados padrão em caso de erro
+                        empresaData = {
+                            cnpj: cnpjFormatted,
+                            razaoSocial: "Não informado",
+                            emails: ["Não informado"],
+                            telefones: ["Não informado"],
+                            endereco: "Não informado"
+                        };
+
                         showStatusMessage("Erro ao consultar Receita Federal: " + error.message + ". Prosseguindo com CNPJ informado: " + cnpjInput);
                     }
                 }
@@ -244,6 +282,16 @@
                 document.getElementById("emails").textContent = "Não informado";
                 document.getElementById("telefones").textContent = "Não informado";
                 document.getElementById("endereco").textContent = "Não informado";
+
+                // Armazenar dados padrão em caso de erro
+                empresaData = {
+                    cnpj: cnpjFormatted,
+                    razaoSocial: "Não informado",
+                    emails: ["Não informado"],
+                    telefones: ["Não informado"],
+                    endereco: "Não informado"
+                };
+
                 showStatusMessage("Erro ao buscar empresa no Bitrix24: " + error.message + ". Prosseguindo com CNPJ informado: " + cnpjInput);
                 resultDiv.style.display = "block";
                 createDealBtn.style.display = "block";
@@ -253,9 +301,13 @@
         async function createDeal() {
             const dealAddWebhook = "https://primem.bitrix24.com.br/rest/89/8csyfkefuj46r22z/crm.deal.add";
             const dealFields = {
-                TITLE: companyId ? "Conhecimento de embarque desconhecido" : `Negócio para CNPJ: ${cnpjInputValue}`,
+                TITLE: "Conhecimento de embarque desconhecido", // Nome fixo do negócio
                 COMPANY_ID: companyId || null,
-                UF_CRM_1706725043860: conhecimentoEmbarque
+                UF_CRM_1706725043860: conhecimentoEmbarque,
+                UF_CRM_25C6A52B: empresaData.cnpj, // CNPJ
+                UF_CRM_1684258348_formatted: empresaData.endereco, // Endereço
+                EMAIL: empresaData.emails.map(email => ({ VALUE: email, VALUE_TYPE: "WORK" })), // Emails
+                PHONE: empresaData.telefones.map(phone => ({ VALUE: phone, VALUE_TYPE: "WORK" })) // Telefones
             };
 
             try {
