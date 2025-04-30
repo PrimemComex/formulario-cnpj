@@ -71,23 +71,64 @@ console.log("Nenhum arquivo anexado.");
 showStatusMessage("Nenhum arquivo anexado.");
 }
 
-// Prosseguir sem buscar empresa no Bitrix24
+// Webhook para buscar empresas (crm.company.list)
+const companyListWebhook = "https://primem.bitrix24.com.br/rest/89/2h0usfzkv0bo8jqo/crm.company.list";
+const queryUrl = ${companyListWebhook}?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpjFormatted)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B;
+
+try {
+console.log("Buscando empresa com URL:", queryUrl);
+const response = await fetch(queryUrl);
+if (!response.ok) throw new Error("Erro ao buscar empresa: " + response.statusText);
+const data = await response.json();
+console.log("Resposta da busca:", JSON.stringify(data, null, 2));
+
+// Filtrar empresas que realmente correspondem ao CNPJ
+const matchingCompanies = data.result.filter(company => {
+const companyCnpj = company.UF_CRM_25C6A52B ? String(company.UF_CRM_25C6A52B).trim() : "";
+const cleanCompanyCnpj = cleanCNPJ(companyCnpj);
+console.log("Comparando CNPJ da empresa:", companyCnpj, "limpo:", cleanCompanyCnpj, "com:", cnpjClean);
+return cleanCompanyCnpj === cnpjClean && companyCnpj !== "";
+});
+console.log("Empresas correspondentes:", JSON.stringify(matchingCompanies, null, 2));
+
+if (matchingCompanies.length > 0) {
+const company = matchingCompanies[0]; // Selecionar a primeira empresa correspondente
+companyId = company.ID;
+console.log("Empresa selecionada:", JSON.stringify(company, null, 2));
+document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
+document.getElementById("email").textContent = company.EMAIL?.[0]?.VALUE || "Não informado";
+document.getElementById("telefone").textContent = company.PHONE?.[0]?.VALUE || "Não informado";
+showStatusMessage("Empresa encontrada no Bitrix24!");
+} else {
+console.log("Empresa não encontrada no Bitrix24. Prosseguindo com CNPJ informado.");
 companyId = null; // Não temos empresa associada
 document.getElementById("razao_social").textContent = "Não informado";
 document.getElementById("email").textContent = "Não informado";
 document.getElementById("telefone").textContent = "Não informado";
-showStatusMessage("Prosseguindo com CNPJ informado: " + cnpjInput);
+showStatusMessage("Empresa não encontrada no Bitrix24. Prosseguindo com CNPJ informado: " + cnpjInput);
+}
 
 resultDiv.style.display = "block";
 createDealBtn.style.display = "block";
+} catch (error) {
+console.error("Erro na busca:", error);
+// Mesmo que haja erro na busca no Bitrix24, prosseguir com o CNPJ informado
+companyId = null;
+document.getElementById("razao_social").textContent = "Não informado";
+document.getElementById("email").textContent = "Não informado";
+document.getElementById("telefone").textContent = "Não informado";
+showStatusMessage("Erro ao buscar empresa no Bitrix24: " + error.message + ". Prosseguindo com CNPJ informado: " + cnpjInput);
+resultDiv.style.display = "block";
+createDealBtn.style.display = "block";
+}
 });
 
 async function createDeal() {
 // Webhook para criar negócios (crm.deal.add)
 const dealAddWebhook = "https://primem.bitrix24.com.br/rest/89/8csyfkefuj46r22z/crm.deal.add";
 const dealFields = {
-TITLE: Negócio para CNPJ: ${cnpjInputValue},
-COMPANY_ID: companyId || null, // COMPANY_ID será null
+TITLE: companyId ? "Conhecimento de embarque desconhecido" : Negócio para CNPJ: ${cnpjInputValue},
+COMPANY_ID: companyId || null, // COMPANY_ID será null se a empresa não for encontrada
 UF_CRM_1706725043860: conhecimentoEmbarque
 };
 
