@@ -1,1 +1,97 @@
+13:06
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Formulário de CNPJ - Etapa 1</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .form-container { max-width: 400px; padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
+        .error { color: red; display: none; }
+        .result { margin-top: 10px; padding: 10px; border: 1px solid #ddd; display: none; }
+        #status-message { margin-top: 10px; padding: 10px; border: 1px solid #28a745; color: #28a745; display: none; }
+        #status-message.error { border: 1px solid #ff0000; color: #ff0000; }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <h2>Inserir CNPJ</h2>
+        <form id="cnpj-form">
+            <label for="cnpj">CNPJ:</label><br>
+            <input type="text" id="cnpj" name="cnpj" placeholder="99.999.999/9999-99" required><br>
+            <p id="error-message" class="error">CNPJ inválido! Use 14 dígitos (ex.: 12.345.678/0001-99).</p>
+            <button type="submit">Buscar Dados</button>
+        </form>
+        <div id="result" class="result">
+            <h3>Dados da Empresa</h3>
+            <p><strong>Razão Social:</strong> <span id="razao_social"></span></p>
+            <p><strong>Email:</strong> <span id="email"></span></p>
+            <p><strong>Telefone:</strong> <span id="telefone"></span></p>
+        </div>
+        <div id="status-message"></div>
+    </div>
+    <script>
+        // Função para formatar o CNPJ
+        function formatCNPJ(cnpj) {
+            cnpj = cnpj.replace(/[^\d]/g, "");
+            if (cnpj.length === 14) {
+                return `${cnpj.substr(0, 2)}.${cnpj.substr(2, 3)}.${cnpj.substr(5, 3)}/${cnpj.substr(8, 4)}-${cnpj.substr(12, 2)}`;
+            }
+            return cnpj;
+        }
 
+        // Função para exibir mensagens de status
+        function showStatusMessage(message, isError = false) {
+            const statusDiv = document.getElementById("status-message");
+            statusDiv.textContent = message;
+            statusDiv.style.display = "block";
+            statusDiv.classList.toggle("error", isError);
+        }
+
+        document.getElementById("cnpj-form").addEventListener("submit", async function(event) {
+            event.preventDefault();
+            const cnpjInput = document.getElementById("cnpj").value;
+            const cnpjClean = cnpjInput.replace(/[^\d]/g, "");
+            const cnpjFormatted = formatCNPJ(cnpjClean);
+            const errorMessage = document.getElementById("error-message");
+            const resultDiv = document.getElementById("result");
+
+            // Validação do CNPJ
+            if (cnpjClean.length !== 14 || isNaN(cnpjClean)) {
+                errorMessage.style.display = "block";
+                resultDiv.style.display = "none";
+                showStatusMessage("CNPJ inválido. Por favor, insira 14 dígitos.", true);
+                return;
+            }
+            errorMessage.style.display = "none";
+
+            // Consulta ao Bitrix24
+            const proxyUrl = "/.netlify/functions/proxy/";
+            const queryUrl = `${proxyUrl}crm.company.list?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpjFormatted)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE`;
+
+            try {
+                const response = await fetch(queryUrl);
+                if (!response.ok) {
+                    throw new Error("Erro ao consultar o Bitrix24.");
+                }
+                const data = await response.json();
+
+                if (data.result && data.result.length > 0) {
+                    const company = data.result[0];
+                    document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
+                    document.getElementById("email").textContent = company.EMAIL?.[0]?.VALUE || "Não informado";
+                    document.getElementById("telefone").textContent = company.PHONE?.[0]?.VALUE || "Não informado";
+                    resultDiv.style.display = "block";
+                    showStatusMessage("Empresa encontrada no Bitrix24!");
+                } else {
+                    resultDiv.style.display = "none";
+                    showStatusMessage("Empresa não encontrada no Bitrix24.");
+                }
+            } catch (error) {
+                resultDiv.style.display = "none";
+                showStatusMessage("Erro ao buscar no Bitrix24: " + error.message, true);
+            }
+        });
+    </script>
+</body>
+</html>
