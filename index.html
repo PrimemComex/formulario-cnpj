@@ -89,6 +89,11 @@
             return cnpj;
         }
 
+        // Função para limpar o CNPJ (apenas dígitos)
+        function cleanCNPJ(cnpj) {
+            return cnpj.replace(/[^\d]/g, "");
+        }
+
         // Função para exibir mensagens de status na página
         function showStatusMessage(message, isError = false) {
             const statusDiv = document.getElementById("status-message");
@@ -116,10 +121,84 @@
             return new Promise(resolve => setTimeout(resolve, ms));
         }
 
+        // Função para buscar empresa no Bitrix24
+        async function searchCompanyInBitrix(cnpj) {
+            const proxyUrl = "/.netlify/functions/proxy/";
+            const trySearch = async (cnpjValue) => {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // Timeout de 10 segundos
+                const queryUrl = `${proxyUrl}crm.company.list?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpjValue)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE`;
+                try {
+                    const response = await fetch(queryUrl, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+                    if (!response.ok) {
+                        throw new Error("Erro ao buscar empresa. CNPJ não encontrado ou webhook inválido.");
+                    }
+                    return await response.json();
+                } catch (error) {
+                    clearTimeout(timeoutId);
+                    throw error;
+                }
+            };
+
+            // Função para tentar a busca com retentativas
+            const trySearchWithRetry = async (cnpjValue, maxRetries = 3, delayMs = 2000) => {
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        console.log(`Tentativa ${attempt} de busca para o CNPJ: ${cnpjValue}`);
+                        const data = await trySearch(cnpjValue);
+                        return data; // Sucesso, retorna os dados
+                    } catch (error) {
+                        console.error(`Erro na tentativa ${attempt}:`, error.message);
+                        if (attempt === maxRetries) {
+                            throw new Error(`Falha após ${maxRetries} tentativas: ${error.message}`);
+                        }
+                        await delay(delayMs); // Espera antes da próxima tentativa
+                    }
+                }
+            };
+
+            // Tentar buscar com o CNPJ formatado
+            let data = await trySearchWithRetry(cnpj);
+            if (data.result && data.result.length > 0) {
+                return data;
+            }
+
+            // Se não encontrar, tentar com o CNPJ limpo
+            const cnpjLimpo = cleanCNPJ(cnpj);
+            data = await trySearchWithRetry(cnpjLimpo);
+            if (data.result && data.result.length > 0) {
+                return data;
+            }
+
+            return null; // Empresa não encontrada
+        }
+
+        // Função para buscar dados na BrasilAPI
+        async function fetchCNPJFromBrasilAPI(cnpj) {
+            const cnpjLimpo = cleanCNPJ(cnpj);
+            const url = `https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`;
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error("Erro ao buscar dados na BrasilAPI.");
+                }
+                const data = await response.json();
+                return {
+                    razaoSocial: data.razao_social || "Não informado",
+                    email: "Não informado", // BrasilAPI não fornece email
+                    telefone: data.ddd_telefone_1 ? `+55${data.ddd_telefone_1}` : "Não informado"
+                };
+            } catch (error) {
+                console.error("Erro ao buscar dados na BrasilAPI:", error);
+                throw error;
+            }
+        }
+
         document.getElementById("cnpj-form").addEventListener("submit", async function(event) {
             event.preventDefault(); // Impede o envio padrão do formulário
             const cnpjInput = document.getElementById("cnpj").value;
-            const cnpjClean = cnpjInput.replace(/[^\d]/g, ""); // Formato limpo (sem pontos e traços)
+            const cnpjClean = cleanCNPJ(cnpjInput); // Formato limpo (sem pontos e traços)
             const cnpjFormatted = formatCNPJ(cnpjClean); // Formato com pontos e traços
             const errorMessage = document.getElementById("error-message");
             const resultDiv = document.getElementById("result");
@@ -150,106 +229,30 @@
                 showStatusMessage("Nenhum arquivo anexado.");
             }
 
-            // Chamar o Bitrix24 para buscar a empresa via proxy
-            const proxyUrl = "/.netlify/functions/proxy/";
-            const trySearch = async (cnpj) => {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000); // Timeout de 10 segundos
-                const queryUrl = `${proxyUrl}crm.company.list?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpj)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE`;
-                try {
-                    const response = await fetch(queryUrl, { signal: controller.signal });
-                    clearTimeout(timeoutId);
-                    if (!response.ok) {
-                        throw new Error("Erro ao buscar empresa. CNPJ não encontrado ou webhook inválido.");
-                    }
-                    return await response.json();
-                } catch (error) {
-                    clearTimeout(timeoutId);
-                    throw error;
-                }
-            };
-
-            // Função para tentar a busca com retentativas
-            const trySearchWithRetry = async (cnpj, maxRetries = 3, delayMs = 2000) => {
-                for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                    try {
-                        console.log(`Tentativa ${attempt} de busca para o CNPJ: ${cnpj}`);
-                        const data = await trySearch(cnpj);
-                        return data; // Sucesso, retorna os dados
-                    } catch (error) {
-                        console.error(`Erro na tentativa ${attempt}:`, error.message);
-                        if (attempt === maxRetries) {
-                            throw new Error(`Falha após ${maxRetries} tentativas: ${error.message}`);
-                        }
-                        await delay(delayMs); // Espera antes da próxima tentativa
-                    }
-                }
-            };
-
-            // Tentar buscar com o formato com pontos e traços
             try {
-                let data = await trySearchWithRetry(cnpjFormatted);
-                if (data.result && data.result.length > 0) {
-                    processCompanyData(data);
+                // Primeiro, tentar buscar a empresa no Bitrix24
+                const bitrixData = await searchCompanyInBitrix(cnpjFormatted);
+                if (bitrixData) {
+                    // Empresa encontrada no Bitrix24
+                    const company = bitrixData.result[0];
+                    companyId = company.ID;
+                    document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
+                    document.getElementById("email").textContent = company.EMAIL && company.EMAIL.length > 0 ? company.EMAIL[0].VALUE : "Não informado";
+                    document.getElementById("telefone").textContent = company.PHONE && company.PHONE.length > 0 ? company.PHONE[0].VALUE : "Não informado";
+                    showStatusMessage("Empresa encontrada no Bitrix24");
                 } else {
-                    // Se não encontrar, tentar com o formato limpo
-                    data = await trySearchWithRetry(cnpjClean);
-                    if (data.result && data.result.length > 0) {
-                        processCompanyData(data);
-                    } else {
-                        // Empresa não encontrada, criar uma nova
-                        const createCompanyUrl = `${proxyUrl}crm.company.add`;
-                        const companyData = {
-                            fields: {
-                                TITLE: `Nova Empresa - CNPJ: ${cnpjFormatted}`,
-                                UF_CRM_25C6A52B: cnpjFormatted
-                                // Adicione outros campos se necessário
-                            }
-                        };
-                        const createResponse = await fetch(createCompanyUrl, {
-                            method: "POST",
-                            headers: {
-                                "Content-Type": "application/json",
-                                "Accept": "application/json"
-                            },
-                            body: JSON.stringify(companyData)
-                        });
-                        if (!createResponse.ok) {
-                            console.error("Erro ao criar a empresa:", createResponse.status, createResponse.statusText);
-                            throw new Error("Erro ao criar a empresa.");
-                        }
-                        const createData = await createResponse.json();
-                        if (createData.result) {
-                            companyId = createData.result;
-                            processCompanyData({
-                                result: [{
-                                    ID: companyId,
-                                    TITLE: companyData.fields.TITLE,
-                                    EMAIL: [{ VALUE: "Não informado" }],
-                                    PHONE: [{ VALUE: "Não informado" }]
-                                }]
-                            });
-                            showStatusMessage("Nova empresa criada com sucesso!");
-                        } else {
-                            throw new Error("Falha ao criar a empresa: " + (createData.error_description || "Desconhecido"));
-                        }
-                    }
+                    // Empresa não encontrada, buscar na BrasilAPI
+                    const apiData = await fetchCNPJFromBrasilAPI(cnpjFormatted);
+                    document.getElementById("razao_social").textContent = apiData.razaoSocial;
+                    document.getElementById("email").textContent = apiData.email;
+                    document.getElementById("telefone").textContent = apiData.telefone;
+                    showStatusMessage("Dados obtidos na Receita Federal, mas o email não foi encontrado na base pública");
+                    // Aqui você pode adicionar lógica para criar a empresa no Bitrix24, se desejar
                 }
+                resultDiv.style.display = "block";
+                createDealBtn.style.display = "block";
             } catch (error) {
-                showStatusMessage(error.message, true);
-                resultDiv.style.display = "none";
-                createDealBtn.style.display = "none";
-            }
-
-            function processCompanyData(data) {
-                const company = data.result[0]; // Primeira empresa encontrada ou criada
-                companyId = company.ID; // Armazenar o ID da empresa
-                // Preencher os campos com os dados retornados
-                document.getElementById("razao_social").textContent = company.TITLE || "Não informado";
-                document.getElementById("email").textContent = company.EMAIL && company.EMAIL.length > 0 ? company.EMAIL[0].VALUE : "Não informado";
-                document.getElementById("telefone").textContent = company.PHONE && company.PHONE.length > 0 ? company.PHONE[0].VALUE : "Não informado";
-                resultDiv.style.display = "block"; // Mostrar os dados
-                createDealBtn.style.display = "block"; // Mostrar o botão "Criar Negócio"
+                showStatusMessage("Erro ao buscar dados: " + error.message, true);
             }
         });
 
