@@ -1,4 +1,4 @@
-13:38
+13:45
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -82,7 +82,7 @@
         let filesToUpload = [];
         let conhecimentoEmbarque = "";
         let cnpjInputValue = "";
-        // Variáveis globais para armazenar os dados da BrasilAPI
+        // Variáveis globais para armazenar os dados da empresa
         let empresaData = {
             cnpj: "",
             razaoSocial: "Não informado",
@@ -119,6 +119,37 @@
             });
         }
 
+        async function searchCompanyInBitrix(cnpjFormatted, cnpjClean) {
+            const companyListWebhook = "https://primem.bitrix24.com.br/rest/89/2h0usfzkv0bo8jqo/crm.company.list";
+            const queryUrlFormatted = `${companyListWebhook}?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpjFormatted)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B&select[]=UF_CRM_1684258348`;
+            const queryUrlClean = `${companyListWebhook}?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpjClean)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B&select[]=UF_CRM_1684258348`;
+
+            console.log("Buscando empresa com CNPJ formatado:", queryUrlFormatted);
+            let response = await fetch(queryUrlFormatted);
+            if (!response.ok) {
+                console.error("Erro ao buscar com CNPJ formatado:", response.statusText);
+            } else {
+                const data = await response.json();
+                console.log("Resposta da busca (formatado):", JSON.stringify(data, null, 2));
+                if (data.result && data.result.length > 0) {
+                    return data.result[0];
+                }
+            }
+
+            console.log("Buscando empresa com CNPJ limpo:", queryUrlClean);
+            response = await fetch(queryUrlClean);
+            if (!response.ok) {
+                console.error("Erro ao buscar com CNPJ limpo:", response.statusText);
+                return null;
+            }
+            const data = await response.json();
+            console.log("Resposta da busca (limpo):", JSON.stringify(data, null, 2));
+            if (data.result && data.result.length > 0) {
+                return data.result[0];
+            }
+            return null;
+        }
+
         async function fetchCNPJFromReceita(cnpjClean) {
             try {
                 console.log("Consultando CNPJ na BrasilAPI:", cnpjClean);
@@ -131,14 +162,13 @@
                 const data = await response.json();
                 console.log("Dados retornados pela BrasilAPI:", JSON.stringify(data, null, 2));
 
-                // Adicionar o código do país +55 aos números de telefone
                 const telefones = [
                     data.ddd_telefone_1 ? `+55${data.ddd_telefone_1}` : "Não informado",
                     data.ddd_telefone_2 ? `+55${data.ddd_telefone_2}` : null
                 ].filter(tel => tel !== null);
 
                 return {
-                    cnpj: cnpjClean,
+                    cnpj: formatCNPJ(cnpjClean),
                     razaoSocial: data.razao_social || "Não informado",
                     emails: [data.email || "Não informado"],
                     telefones: telefones,
@@ -150,63 +180,32 @@
             }
         }
 
-        async function createOrUpdateCompany(cnpj, empresaData) {
-            const companyListWebhook = "https://primem.bitrix24.com.br/rest/89/2h0usfzkv0bo8jqo/crm.company.list";
-            const queryUrl = `${companyListWebhook}?filter[UF_CRM_25C6A52B]=${encodeURIComponent(cnpj)}&select[]=ID&select[]=TITLE&select[]=EMAIL&select[]=PHONE&select[]=UF_CRM_25C6A52B&select[]=ADDRESS&select[]=ADDRESS_CITY&select[]=ADDRESS_REGION&select[]=ADDRESS_PROVINCE`;
-
-            try {
-                console.log("Buscando empresa com URL:", queryUrl);
-                const response = await fetch(queryUrl);
-                if (!response.ok) throw new Error("Erro ao buscar empresa: " + response.statusText);
-                const data = await response.json();
-                console.log("Resposta da busca:", JSON.stringify(data, null, 2));
-
-                const matchingCompanies = data.result.filter(company => {
-                    const companyCnpj = company.UF_CRM_25C6A52B ? String(company.UF_CRM_25C6A52B).trim() : "";
-                    const cleanCompanyCnpj = cleanCNPJ(companyCnpj);
-                    return cleanCompanyCnpj === cnpj && companyCnpj !== "";
-                });
-
-                if (matchingCompanies.length > 0) {
-                    // Empresa encontrada, retornar o ID
-                    const company = matchingCompanies[0];
-                    console.log("Empresa encontrada:", JSON.stringify(company, null, 2));
-                    return company.ID;
-                } else {
-                    // Empresa não encontrada, criar nova empresa
-                    const companyAddWebhook = "https://primem.bitrix24.com.br/rest/89/2h0usfzkv0bo8jqo/crm.company.add";
-                    const companyFields = {
-                        TITLE: empresaData.razaoSocial,
-                        UF_CRM_25C6A52B: empresaData.cnpj,
-                        UF_CRM_1684258348: empresaData.endereco,
-                        EMAIL: empresaData.emails
-                            .filter(email => email !== "Não informado")
-                            .map(email => ({ VALUE: email, VALUE_TYPE: "WORK" })),
-                        PHONE: empresaData.telefones
-                            .filter(phone => phone !== "Não informado")
-                            .map(phone => ({ VALUE: phone, VALUE_TYPE: "WORK" }))
-                    };
-
-                    console.log("Criando empresa com URL:", companyAddWebhook, "Dados:", JSON.stringify(companyFields, null, 2));
-                    const addResponse = await fetch(companyAddWebhook, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ fields: companyFields })
-                    });
-                    if (!addResponse.ok) throw new Error("Erro ao criar empresa: " + addResponse.statusText);
-                    const addData = await addResponse.json();
-                    console.log("Resposta da criação da empresa:", JSON.stringify(addData, null, 2));
-
-                    if (!addData.result) {
-                        throw new Error("Falha ao criar empresa: " + (addData.error_description || "Erro desconhecido"));
-                    }
-
-                    return addData.result; // Retorna o ID da empresa criada
-                }
-            } catch (error) {
-                console.error("Erro ao criar ou buscar empresa:", error);
-                throw error;
+        async function createCompanyInBitrix(empresaData) {
+            const companyAddWebhook = "https://primem.bitrix24.com.br/rest/89/2h0usfzkv0bo8jqo/crm.company.add";
+            const companyFields = {
+                TITLE: empresaData.razaoSocial,
+                UF_CRM_25C6A52B: empresaData.cnpj, // CNPJ formatado
+                UF_CRM_1684258348: empresaData.endereco,
+                EMAIL: empresaData.emails
+                    .filter(email => email !== "Não informado")
+                    .map(email => ({ VALUE: email, VALUE_TYPE: "WORK" })),
+                PHONE: empresaData.telefones
+                    .filter(phone => phone !== "Não informado")
+                    .map(phone => ({ VALUE: phone, VALUE_TYPE: "WORK" }))
+            };
+            console.log("Criando empresa com URL:", companyAddWebhook, "Dados:", JSON.stringify(companyFields, null, 2));
+            const addResponse = await fetch(companyAddWebhook, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ fields: companyFields })
+            });
+            if (!addResponse.ok) throw new Error("Erro ao criar empresa: " + addResponse.statusText);
+            const addData = await addResponse.json();
+            console.log("Resposta da criação:", JSON.stringify(addData, null, 2));
+            if (!addData.result) {
+                throw new Error("Falha ao criar empresa: " + (addData.error_description || "Erro desconhecido"));
             }
+            return addData.result; // Retorna o ID da empresa criada
         }
 
         document.getElementById("cnpj-form").addEventListener("submit", async function(event) {
@@ -244,28 +243,38 @@
             }
 
             try {
-                const receitaData = await fetchCNPJFromReceita(cnpjClean);
-                empresaData = {
-                    cnpj: cnpjFormatted,
-                    razaoSocial: receitaData.razaoSocial,
-                    emails: receitaData.emails,
-                    telefones: receitaData.telefones,
-                    endereco: receitaData.endereco
-                };
-
-                document.getElementById("razao_social").textContent = receitaData.razaoSocial;
-                document.getElementById("emails").textContent = receitaData.emails.join(", ");
-                document.getElementById("telefones").textContent = receitaData.telefones.join(", ");
-                document.getElementById("endereco").textContent = receitaData.endereco;
-
-                if (receitaData.emails.includes("Não informado")) {
-                    showStatusMessage("Dados da empresa obtidos na Receita Federal, mas o email não foi encontrado na base pública. Prosseguindo com CNPJ informado: " + cnpjInput);
+                // Primeiro, buscar no Bitrix24
+                let empresa = await searchCompanyInBitrix(cnpjFormatted, cnpjClean);
+                if (empresa) {
+                    companyId = empresa.ID;
+                    empresaData = {
+                        cnpj: empresa.UF_CRM_25C6A52B || cnpjFormatted,
+                        razaoSocial: empresa.TITLE || "Não informado",
+                        emails: empresa.EMAIL ? empresa.EMAIL.map(email => email.VALUE) : ["Não informado"],
+                        telefones: empresa.PHONE ? empresa.PHONE.map(phone => phone.VALUE) : ["Não informado"],
+                        endereco: empresa.UF_CRM_1684258348 || "Não informado"
+                    };
+                    showStatusMessage("Empresa encontrada no Bitrix24!");
                 } else {
-                    showStatusMessage("Dados da empresa obtidos na Receita Federal!");
+                    // Se não encontrada, buscar na BrasilAPI
+                    const receitaData = await fetchCNPJFromReceita(cnpjClean);
+                    empresaData = {
+                        cnpj: cnpjFormatted,
+                        razaoSocial: receitaData.razaoSocial,
+                        emails: receitaData.emails,
+                        telefones: receitaData.telefones,
+                        endereco: receitaData.endereco
+                    };
+                    // Criar empresa no Bitrix24
+                    companyId = await createCompanyInBitrix(empresaData);
+                    showStatusMessage("Empresa não encontrada no Bitrix24. Dados obtidos na Receita Federal e empresa criada!");
                 }
 
-                // Criar ou buscar a empresa no Bitrix24
-                companyId = await createOrUpdateCompany(cnpjClean, empresaData);
+                // Exibir os dados no formulário
+                document.getElementById("razao_social").textContent = empresaData.razaoSocial;
+                document.getElementById("emails").textContent = empresaData.emails.join(", ");
+                document.getElementById("telefones").textContent = empresaData.telefones.join(", ");
+                document.getElementById("endereco").textContent = empresaData.endereco;
 
                 resultDiv.style.display = "block";
                 createDealBtn.style.display = "block";
@@ -294,9 +303,9 @@
         async function createDeal() {
             const dealAddWebhook = "https://primem.bitrix24.com.br/rest/89/8csyfkefuj46r22z/crm.deal.add";
             const dealFields = {
-                TITLE: "Conhecimento de embarque desconhecido", // Título fixo do negócio
-                COMPANY_ID: companyId || null, // Associar ao ID da empresa criada ou encontrada
-                UF_CRM_1706725043860: conhecimentoEmbarque // Conhecimento de embarque
+                TITLE: "Conhecimento de embarque desconhecido",
+                COMPANY_ID: companyId || null,
+                UF_CRM_1706725043860: conhecimentoEmbarque
             };
 
             try {
@@ -354,4 +363,3 @@
     </script>
 </body>
 </html>
-
